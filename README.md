@@ -1,5 +1,7 @@
 # Wordkeep
 
+[![Support · 1,99 €](https://img.shields.io/badge/Support-1%2C99_%E2%82%AC-2f855a)](https://marcfors.com/donate?from=wordkeep)
+
 A personal lexicon: look up a word, keep its definitions, examples, and etymology, then review it with spaced repetition. Words link across languages as a 3D atlas. Discover is a matching game drawn from large frequency lists.
 
 ## Run locally
@@ -70,3 +72,5 @@ fly volumes create wordkeep_data --region iad --size 1
 fly secrets set WORDKEEP_ACCESS_KEY=your-private-key
 fly deploy
 ```
+
+If this project is useful to you, you can [support it with 1,99 €](https://marcfors.com/donate?from=wordkeep).
