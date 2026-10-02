@@ -3,6 +3,8 @@ import { useStats } from '../context/StatsContext'
 import { LanguageSwitcher } from './LanguageSwitcher'
 import { WordTrailBar } from './WordTrailBar'
 
+const SUPPORT_URL = 'https://marcfors.com/donate?from=wordkeep'
+
 const linkClass = ({ isActive }: { isActive: boolean }) =>
   `rounded-full px-3 py-1.5 text-sm ${
     isActive ? 'bg-ink text-paper' : 'text-muted hover:text-ink'
@@ -41,6 +43,16 @@ export function Layout() {
       </header>
       <WordTrailBar />
       <Outlet />
+      <footer className="mt-16 border-t border-rule pt-4 text-sm text-muted">
+        <a
+          href={SUPPORT_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-ink"
+        >
+          Support · 1,99 €
+        </a>
+      </footer>
     </div>
   )
 }

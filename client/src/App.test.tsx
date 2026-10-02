@@ -66,6 +66,14 @@ describe('app routes', () => {
     atlas.unmount()
   })
 
+  it('links to the support page from the footer', async () => {
+    renderAt('/')
+    const link = await screen.findByRole('link', { name: 'Support · 1,99 €' })
+    expect(link).toHaveAttribute('href', 'https://marcfors.com/donate?from=wordkeep')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+  })
+
   it('redirects unknown routes home', async () => {
     renderAt('/nope')
     expect(await screen.findByRole('heading', { name: /Type a word/i })).toBeInTheDocument()
