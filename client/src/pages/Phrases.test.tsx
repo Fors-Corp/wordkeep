@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
+import { I18nProvider } from '../context/I18nContext'
 import { LanguageProvider } from '../context/LanguageContext'
 import { StatsProvider } from '../context/StatsContext'
 import { WordTrailProvider } from '../context/WordTrailContext'
@@ -15,13 +16,15 @@ function json(data: unknown, status = 200) {
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <LanguageProvider>
-        <StatsProvider>
-          <WordTrailProvider>
-            <App />
-          </WordTrailProvider>
-        </StatsProvider>
-      </LanguageProvider>
+      <I18nProvider>
+        <LanguageProvider>
+          <StatsProvider>
+            <WordTrailProvider>
+              <App />
+            </WordTrailProvider>
+          </StatsProvider>
+        </LanguageProvider>
+      </I18nProvider>
     </MemoryRouter>,
   )
 }
@@ -35,6 +38,7 @@ function calls(part: string) {
 
 describe('phrases', () => {
   beforeEach(() => {
+    localStorage.clear()
     queue = []
     fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
@@ -97,6 +101,30 @@ describe('phrases', () => {
   it('opens shared phrase links straight into the analysis', async () => {
     renderAt('/?q=The%20cat%20sat.&lang=en')
     expect(await screen.findByRole('heading', { name: 'The cat sat.' })).toBeInTheDocument()
+  })
+
+  it('words dictionary quiz questions in the app language', async () => {
+    localStorage.setItem('wordkeep-locale', 'es')
+    const analysis = phraseFixture({
+      source: 'dictionary',
+      clozeIndexes: [],
+      questions: [
+        {
+          question: 'Which form of “sit” is “sat”?',
+          answer: 'simple past (verb)',
+          template: { kind: 'form', text: 'sat', lemma: 'sit', partOfSpeech: 'verb', features: ['simple past'] },
+        },
+      ],
+    })
+    // "p4" with no repetitions lands on the grammar question (modes: meaning, cloze, grammar).
+    queue = [phraseWord({ id: 'p4', repetitions: 0, analysis })]
+    const user = userEvent.setup()
+    renderAt('/review')
+    expect(await screen.findByText('¿Qué forma de «sit» es «sat»?')).toBeInTheDocument()
+    expect(screen.getByText(/Pregunta de gramática/)).toBeInTheDocument()
+    await user.keyboard(' ')
+    expect(screen.getByText('simple past (verbo)')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Bien/ })).toBeEnabled()
   })
 
   it('quizzes a phrase in review with a cloze card', async () => {

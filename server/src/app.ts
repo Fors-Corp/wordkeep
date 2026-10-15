@@ -69,7 +69,7 @@ app.use('/api/*', async (c, next) => {
 
 const GRADES: Grade[] = ['again', 'hard', 'good', 'easy']
 
-app.get('/api/health', (c) => c.json({ ok: true, version: '1.2.1' }))
+app.get('/api/health', (c) => c.json({ ok: true, version: '1.3.0' }))
 
 app.get('/api/session', (c) =>
   c.json({ ok: true, locked: Boolean(accessKey), signedIn: isSignedIn(c) }),
@@ -125,7 +125,9 @@ app.get('/api/lookup', async (c) => {
 })
 
 function phraseError(c: Context, error: unknown) {
-  if (error instanceof PhraseInputError) return c.json({ error: error.message }, 400)
+  if (error instanceof PhraseInputError) {
+    return c.json({ error: error.message, code: error.code, params: error.params }, 400)
+  }
   const message = error instanceof Error ? error.message : 'Phrase analysis failed'
   return c.json({ error: message }, 502)
 }

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { SenseDraft } from '@shared/types'
+import { useI18n } from '../context/I18nContext'
 import { lookupHref } from '../lib/paths'
 
 function TermRow({
@@ -53,6 +54,7 @@ export function SenseExtras({
   linked?: boolean
   compact?: boolean
 }) {
+  const { t } = useI18n()
   const examples = (sense.examples ?? []).filter(Boolean).slice(0, compact ? 1 : 3)
 
   return (
@@ -75,14 +77,14 @@ export function SenseExtras({
         </p>
       ))}
       <TermRow
-        label="Synonyms"
+        label={t('sense.synonyms')}
         terms={(sense.synonyms ?? []).slice(0, compact ? 8 : 14)}
         language={language}
         kind="syn"
         linked={linked}
       />
       <TermRow
-        label="Antonyms"
+        label={t('sense.antonyms')}
         terms={(sense.antonyms ?? []).slice(0, compact ? 8 : 14)}
         language={language}
         kind="ant"
@@ -97,10 +99,11 @@ export function FormsLine({
 }: {
   forms: Array<{ word: string; tags: string[] }>
 }) {
+  const { t } = useI18n()
   if (!forms.length) return null
   return (
     <p className="mt-2 text-sm text-muted">
-      <span className="mr-2 text-xs uppercase tracking-[0.14em]">Forms</span>
+      <span className="mr-2 text-xs uppercase tracking-[0.14em]">{t('sense.forms')}</span>
       {forms.map((form, index) => (
         <span key={`${form.word}-${index}`}>
           {index > 0 ? ' · ' : ''}

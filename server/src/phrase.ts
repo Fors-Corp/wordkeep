@@ -30,7 +30,15 @@ const LOOKUP_CONCURRENCY = 4
 const tokenCache = new Map<string, Promise<TokenInfo>>()
 const analysisCache = new Map<string, PhraseAnalysis>()
 
-export class PhraseInputError extends Error {}
+export class PhraseInputError extends Error {
+  constructor(
+    message: string,
+    readonly code: 'phrase-empty' | 'phrase-too-long' | 'phrase-too-many-words',
+    readonly params: Record<string, number> = {},
+  ) {
+    super(message)
+  }
+}
 
 export function clearPhraseCache() {
   tokenCache.clear()
@@ -149,15 +157,23 @@ function dictionaryQuestions(tokens: PhraseToken[]): GrammarQuestion[] {
   const content = tokens.filter((token) => token.known && token.partOfSpeech && isContentToken(token))
   for (const token of [...inflected, ...content]) {
     if (questions.some((item) => item.question.includes(`“${token.text}”`))) continue
+    const template = {
+      text: token.text,
+      lemma: token.lemma,
+      partOfSpeech: token.partOfSpeech,
+      features: token.features,
+    }
     if (token.features.length) {
       questions.push({
         question: `Which form of “${token.lemma}” is “${token.text}”?`,
         answer: `${token.features.join(', ')} (${token.partOfSpeech || 'word'})`,
+        template: { kind: 'form', ...template },
       })
     } else {
       questions.push({
         question: `What part of speech is “${token.text}” here?`,
         answer: token.partOfSpeech,
+        template: { kind: 'pos', ...template },
       })
     }
     if (questions.length >= 3) break
@@ -200,6 +216,7 @@ function mergeClaude(base: PhraseAnalysis, ai: ClaudeGrammar): PhraseAnalysis {
     questions: ai.questions.filter((item) => item.question.trim() && item.answer.trim()).slice(0, 6),
     clozeIndexes: ai.clozeIndexes.filter((index) => valid.has(index)).slice(0, 4),
     note: null,
+    notice: null,
   }
 }
 
@@ -223,15 +240,19 @@ export async function analyzePhrase(
   options: { visitor?: string } = {},
 ): Promise<PhraseAnalysis> {
   const text = normalizePhrase(rawText)
-  if (!text) throw new PhraseInputError('Type a phrase to analyze')
+  if (!text) throw new PhraseInputError('Type a phrase to analyze', 'phrase-empty')
   if (text.length > MAX_PHRASE_CHARS) {
-    throw new PhraseInputError(`Phrases can be up to ${MAX_PHRASE_CHARS} characters`)
+    throw new PhraseInputError(`Phrases can be up to ${MAX_PHRASE_CHARS} characters`, 'phrase-too-long', {
+      max: MAX_PHRASE_CHARS,
+    })
   }
   const segments = segmentPhrase(text, lang)
   const words = segments.filter((part) => part.wordLike)
-  if (!words.length) throw new PhraseInputError('Type a phrase to analyze')
+  if (!words.length) throw new PhraseInputError('Type a phrase to analyze', 'phrase-empty')
   if (words.length > MAX_PHRASE_WORDS) {
-    throw new PhraseInputError(`Phrases can be up to ${MAX_PHRASE_WORDS} words`)
+    throw new PhraseInputError(`Phrases can be up to ${MAX_PHRASE_WORDS} words`, 'phrase-too-many-words', {
+      max: MAX_PHRASE_WORDS,
+    })
   }
 
   const aiActive = grammarAnalyzerActive()
@@ -301,11 +322,12 @@ export async function analyzePhrase(
     note: aiActive
       ? null
       : 'Word-by-word dictionary breakdown. Set ANTHROPIC_API_KEY on the server for sentence structure, tense, idioms, and a translation.',
+    notice: aiActive ? null : { code: 'dictionary-only' },
     existing: null,
   }
 
   if (aiActive) {
-    const sharedKey = ['v1', grammarModel(), lang, explain, text]
+    const sharedKey = ['v2', grammarModel(), lang, explain, text]
     const shared = await readSharedAnalysis<ClaudeGrammar>(sharedKey)
     if (shared) {
       analysis = mergeClaude(analysis, shared)
@@ -314,7 +336,11 @@ export async function analyzePhrase(
     }
     const allowance = await takeAiAllowance(options.visitor ?? 'local')
     if (!allowance.ok) {
-      return withExisting({ ...analysis, note: `${allowance.message} Showing the dictionary breakdown.` })
+      return withExisting({
+        ...analysis,
+        note: `${allowance.message} Showing the dictionary breakdown.`,
+        notice: allowance.notice,
+      })
     }
     try {
       const ai = await analyzeGrammar({
@@ -339,6 +365,7 @@ export async function analyzePhrase(
       return withExisting({
         ...analysis,
         note: `Claude analysis unavailable (${message}). Showing the dictionary breakdown.`,
+        notice: { code: 'claude-failed', params: { message } },
       })
     }
   }

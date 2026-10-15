@@ -52,6 +52,7 @@ Each Claude analysis is a paid API call, so every visitor is rate limited:
   - with an Anthropic API key, Claude adds each word's role, the sentence type, tense, mood and voice, clauses, idioms, a translation into your browser's language, and quiz questions.
 - Keep phrases like words. They join the lexicon (filter by words or phrases), export/import, the atlas (linked to the words they contain), and review.
 - Light, dark, or automatic theme from the switch in the header; text meets WCAG AA contrast in both.
+- The interface speaks Català, Español, Português, English, Deutsch, Français and Italiano (globe menu in the header). Phrase analyses use that language, or, with “Explain phrases in their own language”, the phrase’s language. Dictionary definitions stay as Wiktionary wrote them.
 - Review due cards with Again / Hard / Good / Easy (SM-2). Phrase cards rotate between meaning recall, a fill-the-gap cloze, and a grammar question.
 - Browse, filter, export, and import the lexicon as JSON.
 - See synonyms, antonyms, translations, and related words on a rotatable 3D atlas.

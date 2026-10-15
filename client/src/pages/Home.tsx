@@ -4,18 +4,27 @@ import type { SuggestResponse } from '@shared/types'
 import { PhraseAnalysisView } from '../components/PhraseAnalysis'
 import { FormsLine } from '../components/SenseExtras'
 import { SenseList } from '../components/SenseList'
+import { useI18n } from '../context/I18nContext'
 import { useLanguage } from '../context/LanguageContext'
 import { useStats } from '../context/StatsContext'
 import { useWordTrail } from '../context/WordTrailContext'
 import { api } from '../lib/api'
-import { explainLanguage, formatDue, isRtl } from '../lib/format'
+import { ApiError } from '../lib/api'
+import { errorText } from '../lib/errors'
+import { formatDue, isRtl } from '../lib/format'
 import { lookupHref } from '../lib/paths'
 import { useLookup } from '../lib/useLookup'
 
 const emptySuggest: SuggestResponse = { query: '', detected: [], suggestions: [] }
 
+function systemLanguage(): string {
+  const tag = typeof navigator === 'undefined' ? 'en' : navigator.language || 'en'
+  return tag.split('-')[0]?.toLowerCase() || 'en'
+}
+
 export function Home() {
   const { current } = useLanguage()
+  const { t, tp, explainFor, languageName } = useI18n()
   const { stats, recent, refresh } = useStats()
   const { visit } = useWordTrail()
   const {
@@ -42,7 +51,8 @@ export function Home() {
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
   const boxRef = useRef<HTMLFormElement>(null)
-  const uiLang = explainLanguage()
+  const uiLang = systemLanguage()
+  const dictionaryName = current ? languageName(current.code, current.name) : t('home.yourLanguage')
 
   useEffect(() => {
     if (!lookup) return
@@ -103,14 +113,14 @@ export function Home() {
       const saved = await api.keepPhrase({
         text: phrase.text,
         lang: phrase.language,
-        explain: uiLang,
+        explain: explainFor(phrase.language),
         note,
       })
       refresh()
       setPhrase({ ...phrase, existing: { id: saved.word.id } })
       navigate(`/words/${saved.word.id}`)
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Could not save')
+      setSaveError(errorText(err, t, t('home.saveFailed')))
     } finally {
       setSaving(false)
     }
@@ -130,7 +140,7 @@ export function Home() {
       refresh()
       navigate(`/words/${saved.word.id}`)
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : 'Could not save')
+      setSaveError(errorText(err, t, t('home.saveFailed')))
     } finally {
       setSaving(false)
     }
@@ -139,10 +149,8 @@ export function Home() {
   return (
     <div className="grid gap-10 lg:grid-cols-[1.2fr_0.8fr]">
       <section>
-        <p className="mb-2 text-sm uppercase tracking-[0.2em] text-gold">Introduce a word or phrase</p>
-        <h1 className="lemma mb-6 max-w-xl text-4xl leading-tight sm:text-5xl">
-          Type a word or a phrase. The meaning appears.
-        </h1>
+        <p className="mb-2 text-sm uppercase tracking-[0.2em] text-gold">{t('home.eyebrow')}</p>
+        <h1 className="lemma mb-6 max-w-xl text-4xl leading-tight sm:text-5xl">{t('home.title')}</h1>
         <form
           ref={boxRef}
           className="relative"
@@ -177,7 +185,7 @@ export function Home() {
               }
               if (event.key === 'Escape') setOpen(false)
             }}
-            placeholder="Type a word or phrase in any language"
+            placeholder={t('home.placeholder')}
             dir={isRtl(current?.code ?? 'en') ? 'rtl' : 'ltr'}
             className="lemma w-full rounded-2xl border border-rule bg-paper px-4 py-3 text-xl outline-none focus:border-accent"
             autoFocus
@@ -189,7 +197,7 @@ export function Home() {
             role="combobox"
             aria-autocomplete="list"
             aria-expanded={open}
-            aria-label="Word or phrase to look up"
+            aria-label={t('home.inputLabel')}
           />
           {open && suggest.suggestions.length > 0 && (
             <ul
@@ -212,10 +220,12 @@ export function Home() {
                       {item.lemma}
                     </span>
                     <span className="text-xs text-muted">
-                      {item.languageName}
-                      {item.exact ? ' · exact' : ''}
-                      {item.language === current?.code ? ' · yours' : ''}
-                      {item.language === uiLang && item.language !== current?.code ? ' · system' : ''}
+                      {languageName(item.language, item.languageName)}
+                      {item.exact ? ` · ${t('home.exact')}` : ''}
+                      {item.language === current?.code ? ` · ${t('home.yours')}` : ''}
+                      {item.language === uiLang && item.language !== current?.code
+                        ? ` · ${t('home.system')}`
+                        : ''}
                     </span>
                   </button>
                 </li>
@@ -224,8 +234,12 @@ export function Home() {
           )}
         </form>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="text-xs text-muted">Look up as</span>
-          <div className="inline-flex rounded-full bg-chip p-0.5 text-sm" role="group" aria-label="Look up as">
+          <span className="text-xs text-muted">{t('home.lookUpAs')}</span>
+          <div
+            className="inline-flex rounded-full bg-chip p-0.5 text-sm"
+            role="group"
+            aria-label={t('home.lookUpAs')}
+          >
             {(['word', 'phrase'] as const).map((item) => (
               <button
                 key={item}
@@ -234,7 +248,7 @@ export function Home() {
                 onClick={() => setMode(item)}
                 className={`rounded-full px-3 py-1 ${kind === item ? 'bg-ink text-paper' : 'text-muted'}`}
               >
-                {item === 'word' ? 'Word' : 'Phrase'}
+                {item === 'word' ? t('home.word') : t('home.phrase')}
               </button>
             ))}
           </div>
@@ -245,29 +259,35 @@ export function Home() {
               disabled={!query.trim() || busy}
               className="rounded-full bg-accent px-4 py-1.5 text-sm font-semibold text-paper disabled:opacity-50"
             >
-              Analyze
+              {t('home.analyze')}
             </button>
           )}
         </div>
         <p className="mt-2 text-sm text-muted">
           {!isPhrase && suggest.detected.length > 0 && (
             <span className="mr-2 text-gold">
-              Looks like {suggest.detected.map((item) => item.name).join(', ')}.
+              {t('home.looksLike', {
+                languages: suggest.detected.map((item) => languageName(item.code, item.name)).join(', '),
+              })}
             </span>
           )}
           {isPhrase
             ? busy
-              ? 'Analyzing grammar…'
-              : 'Press Enter or Analyze to see what each word does in the phrase.'
+              ? t('home.analyzing')
+              : t('home.pressEnter')
             : busy
-            ? 'Fetching definition, examples, synonyms…'
-            : `Suggestions prefer ${current?.name ?? 'your language'} and ${uiLang === current?.code ? 'this dictionary' : 'your system language'}.`}
+              ? t('home.fetching')
+              : t(uiLang === current?.code ? 'home.suggestThis' : 'home.suggestSystem', {
+                  language: dictionaryName,
+                })}
         </p>
 
         {notFound && (
           <p className="mt-6 rounded-2xl border border-dashed border-rule px-4 py-5 text-sm text-muted">
-            {error || `No dictionary entry for “${query}”.`} Try another spelling or language — you
-            never have to type the meaning yourself.
+            {!error || (error instanceof ApiError && error.status === 404)
+              ? t('home.notFound', { q: query.trim() })
+              : errorText(error, t)}{' '}
+            {t('home.notFoundHint')}
           </p>
         )}
 
@@ -278,29 +298,29 @@ export function Home() {
                 {phrase.text}
               </h2>
               <span className="rounded-full bg-chip px-2 py-0.5 text-xs uppercase tracking-wide text-muted">
-                {phrase.languageName}
+                {languageName(phrase.language, phrase.languageName)}
               </span>
               <span className="text-xs text-muted">
-                {phrase.source === 'claude' ? 'Grammar by Claude' : 'Dictionary breakdown'}
+                {phrase.source === 'claude' ? t('home.byClaude') : t('home.byDictionary')}
               </span>
             </div>
             {phrase.existing && (
               <p className="mb-3 text-sm text-saved">
-                Already in your lexicon.{' '}
+                {t('home.alreadyKept')}{' '}
                 <Link className="underline" to={`/words/${phrase.existing.id}`}>
-                  Open it
+                  {t('home.openIt')}
                 </Link>
               </p>
             )}
             <PhraseAnalysisView analysis={phrase} />
             <label className="mt-5 block">
               <span className="mb-1 block text-xs uppercase tracking-[0.16em] text-muted">
-                Optional mnemonic
+                {t('home.mnemonic')}
               </span>
               <textarea
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
-                placeholder="A memory hook if you want one."
+                placeholder={t('home.mnemonicPhrase')}
                 className="h-16 w-full rounded-xl border border-rule bg-paper-2 p-3 text-sm outline-none"
               />
             </label>
@@ -311,7 +331,7 @@ export function Home() {
               disabled={saving || Boolean(phrase.existing)}
               className="mt-4 rounded-full bg-accent px-5 py-2 text-sm font-semibold text-paper disabled:opacity-50"
             >
-              Keep phrase for recall
+              {t('home.keepPhrase')}
             </button>
           </article>
         )}
@@ -324,33 +344,33 @@ export function Home() {
               </h2>
               {lookup.phonetic && <span className="text-muted">{lookup.phonetic}</span>}
               <span className="rounded-full bg-chip px-2 py-0.5 text-xs uppercase tracking-wide text-muted">
-                {lookup.languageName}
+                {languageName(lookup.language, lookup.languageName)}
               </span>
             </div>
             <FormsLine forms={lookup.forms} />
             {lookup.fallbackFrom && (
               <p className="mt-2 text-sm text-gold">
-                No entry in the selected dictionary. Showing {lookup.languageName}.
+                {t('home.fallbackFrom', { language: languageName(lookup.language, lookup.languageName) })}
               </p>
             )}
             {lookup.existing && (
               <p className="mt-2 text-sm text-saved">
-                Already in your lexicon.{' '}
+                {t('home.alreadyKept')}{' '}
                 <Link className="underline" to={`/words/${lookup.existing.id}`}>
-                  Open it
+                  {t('home.openIt')}
                 </Link>
               </p>
             )}
             {lookup.etymology && (
               <blockquote className="mt-4 border-l-2 border-gold pl-4 text-sm leading-relaxed text-muted">
                 <span className="mb-1 block text-xs uppercase tracking-[0.18em] text-gold">
-                  Etymology
+                  {t('home.etymology')}
                 </span>
                 {lookup.etymology}
               </blockquote>
             )}
             <div className="mt-5">
-              <h3 className="mb-3 text-xs uppercase tracking-[0.16em] text-gold">Definitions</h3>
+              <h3 className="mb-3 text-xs uppercase tracking-[0.16em] text-gold">{t('home.definitions')}</h3>
               <SenseList
                 senses={lookup.senses}
                 language={lookup.language}
@@ -360,7 +380,7 @@ export function Home() {
             </div>
             {lookup.translations.length > 0 && (
               <p className="mt-4 text-sm text-muted">
-                Linked across {lookup.translations.length} languages
+                {tp('home.linkedAcross', lookup.translations.length)}
                 {lookup.translations.slice(0, 8).map((item) => (
                   <span key={`${item.language}-${item.lemma}`} className="ml-2 text-ink">
                     {item.lemma}
@@ -374,12 +394,12 @@ export function Home() {
             )}
             <label className="mt-5 block">
               <span className="mb-1 block text-xs uppercase tracking-[0.16em] text-muted">
-                Optional mnemonic — not the definition
+                {t('home.mnemonicWord')}
               </span>
               <textarea
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
-                placeholder="A memory hook if you want one. The meaning above is already filled in."
+                placeholder={t('home.mnemonicWordHint')}
                 className="h-16 w-full rounded-xl border border-rule bg-paper-2 p-3 text-sm outline-none"
               />
             </label>
@@ -390,7 +410,7 @@ export function Home() {
               disabled={saving || Boolean(lookup.existing)}
               className="mt-4 rounded-full bg-accent px-5 py-2 text-sm font-semibold text-paper disabled:opacity-50"
             >
-              Keep for recall
+              {t('home.keepWord')}
             </button>
           </article>
         )}
@@ -398,27 +418,30 @@ export function Home() {
 
       <aside className="space-y-6">
         <div className="rounded-3xl border border-rule bg-paper-2 p-5">
-          <p className="text-xs uppercase tracking-[0.18em] text-gold">Today</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-gold">{t('home.today')}</p>
           <p className="lemma mt-2 text-5xl">{stats?.dueToday ?? '—'}</p>
-          <p className="text-sm text-muted">cards due</p>
+          <p className="text-sm text-muted">{t('home.cardsDue')}</p>
           <Link
             to="/review"
             className="mt-4 inline-block rounded-full bg-ink px-4 py-2 text-sm text-paper"
           >
-            Review {stats?.dueToday ?? 0} cards
+            {tp('home.reviewCards', stats?.dueToday ?? 0)}
           </Link>
           <p className="mt-4 text-sm text-muted">
-            {stats?.lexiconCount ?? 0} kept · {stats?.newCount ?? 0} new ·{' '}
-            {stats?.languageCount ?? 0} languages
-            {stats?.phraseCount
-              ? ` · ${stats.phraseCount} ${stats.phraseCount === 1 ? 'phrase' : 'phrases'}`
-              : ''}
+            {[
+              t('home.kept', { count: stats?.lexiconCount ?? 0 }),
+              t('home.new', { count: stats?.newCount ?? 0 }),
+              tp('home.languages', stats?.languageCount ?? 0),
+              stats?.phraseCount ? tp('home.phrases', stats.phraseCount) : '',
+            ]
+              .filter(Boolean)
+              .join(' · ')}
           </p>
         </div>
         <div>
-          <h2 className="mb-3 text-xs uppercase tracking-[0.18em] text-muted">Recently kept</h2>
+          <h2 className="mb-3 text-xs uppercase tracking-[0.18em] text-muted">{t('home.recent')}</h2>
           <ul className="space-y-2">
-            {recent.length === 0 && <li className="text-sm text-muted">Nothing kept yet.</li>}
+            {recent.length === 0 && <li className="text-sm text-muted">{t('home.nothingKept')}</li>}
             {recent.map((word) => (
               <li key={word.id}>
                 <Link
@@ -434,7 +457,7 @@ export function Home() {
                     </span>
                   </div>
                   <p className="mt-1 line-clamp-2 text-sm text-muted">{word.gloss}</p>
-                  <p className="mt-1 text-xs text-gold">{formatDue(word.dueAt)}</p>
+                  <p className="mt-1 text-xs text-gold">{formatDue(word.dueAt, undefined, t)}</p>
                 </Link>
               </li>
             ))}

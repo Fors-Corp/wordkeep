@@ -1,3 +1,4 @@
+import { english, type MessageKey, type Translate } from '../i18n'
 const RTL = new Set(['ar', 'he', 'fa', 'ur', 'yi', 'dv', 'ps', 'ug', 'sd', 'ckb', 'arc'])
 
 export function isRtl(code: string): boolean {
@@ -19,24 +20,24 @@ export function languageLine(code: string, name: string, locale = 'en'): string 
   return native === name ? `${name} · ${code}` : `${native} · ${name}`
 }
 
-export function formatDue(ts: number, now = Date.now()): string {
+export function formatDue(ts: number, now = Date.now(), t: Translate = english.t): string {
   const delta = ts - now
-  if (delta <= 0) return 'due now'
+  if (delta <= 0) return t('due.now')
   const minutes = Math.round(delta / 60_000)
-  if (minutes < 60) return `in ${minutes}m`
+  if (minutes < 60) return t('due.minutes', { count: minutes })
   const hours = Math.round(minutes / 60)
-  if (hours < 36) return `in ${hours}h`
+  if (hours < 36) return t('due.hours', { count: hours })
   const days = Math.round(hours / 24)
-  if (days < 60) return `in ${days}d`
+  if (days < 60) return t('due.days', { count: days })
   return new Date(ts).toLocaleDateString()
 }
 
-export function statusLabel(status: string): string {
-  if (status === 'new') return 'new'
-  if (status === 'learning') return 'learning'
-  if (status === 'review') return 'review'
-  if (status === 'mastered') return 'kept'
-  return status
+const STATUSES = ['new', 'learning', 'review', 'mastered'] as const
+
+export function statusLabel(status: string, t: Translate = english.t): string {
+  return (STATUSES as readonly string[]).includes(status)
+    ? t(`status.${status}` as MessageKey)
+    : status
 }
 
 export function isApplePlatform(): boolean {
@@ -61,33 +62,41 @@ export function hashHue(input: string): number {
   return hash % 360
 }
 
-/** The reader's language, used for grammar explanations and translations. */
-export function explainLanguage(): string {
-  const tag = typeof navigator === 'undefined' ? 'en' : navigator.language || 'en'
-  return tag.split('-')[0]?.toLowerCase() || 'en'
-}
+const POS = [
+  'noun',
+  'proper noun',
+  'verb',
+  'auxiliary',
+  'adjective',
+  'adverb',
+  'pronoun',
+  'determiner',
+  'article',
+  'preposition',
+  'postposition',
+  'conjunction',
+  'particle',
+  'numeral',
+  'interjection',
+] as const
 
-const POS_SHORT: Record<string, string> = {
-  noun: 'n',
-  'proper noun': 'prop',
-  verb: 'v',
-  auxiliary: 'aux',
-  adjective: 'adj',
-  adverb: 'adv',
-  pronoun: 'pron',
-  determiner: 'det',
-  article: 'art',
-  preposition: 'prep',
-  postposition: 'post',
-  conjunction: 'conj',
-  particle: 'part',
-  numeral: 'num',
-  interjection: 'intj',
-}
-
-export function posShort(pos: string): string {
+function knownPos(pos: string): string | null {
   const key = pos.trim().toLowerCase()
-  return POS_SHORT[key] ?? (key.length > 6 ? key.slice(0, 5) : key)
+  return (POS as readonly string[]).includes(key) ? key : null
+}
+
+/** Abbreviation for a part of speech in the app language, e.g. "v" or "adj". */
+export function posShort(pos: string, t: Translate = english.t): string {
+  const known = knownPos(pos)
+  if (known) return t(`posShort.${known}` as MessageKey)
+  const key = pos.trim().toLowerCase()
+  return key.length > 6 ? key.slice(0, 5) : key
+}
+
+/** Full name of a part of speech in the app language. */
+export function posLabel(pos: string, t: Translate = english.t): string {
+  const known = knownPos(pos)
+  return known ? t(`pos.${known}` as MessageKey) : pos
 }
 
 /** Tailwind text color for a part of speech, so the breakdown reads at a glance. */

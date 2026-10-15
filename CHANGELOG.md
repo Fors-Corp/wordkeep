@@ -2,6 +2,20 @@
 
 All notable changes to Wordkeep are documented here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-10-15
+
+### Added
+
+- The interface is translated into Catalan, Spanish, Portuguese, English, German, French and Italian. The language follows the browser on first visit and is remembered after you pick one.
+- A language menu in the header (a popover on wide screens, a bottom sheet on phones) lists each language with its flag, its own name, and its code (CA, ES, PT, EN, DE, FR, IT). Flags are SVG, so they look the same on every device.
+- “Explain phrases in their own language” in the same menu: off, Claude’s explanations, translations and quiz questions use the app language; on, they use the phrase’s language.
+- Parts of speech, sentence facts, analysis notices, dictionary quiz questions, due dates and language names follow the app language.
+- The server returns codes (`notice`, `template`, error `code`) so the app can word notices, questions and errors in any language; the English text stays for API clients.
+
+### Changed
+
+- Claude now writes roles, inflection features, sentence type, tense, mood, voice and clause types in the explanation language too; parts of speech stay as English keys so the app can translate and color them.
+
 ## [1.2.1] - 2026-10-15
 
 ### Fixed

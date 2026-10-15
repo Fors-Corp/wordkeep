@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { PlayCard, PlayRound } from '@shared/types'
+import { useI18n } from '../context/I18nContext'
 import { useLanguage } from '../context/LanguageContext'
+import { ApiError } from '../lib/api'
 import { useStats } from '../context/StatsContext'
 import { api } from '../lib/api'
-import { hashHue, isRtl } from '../lib/format'
+import { hashHue, isRtl, posLabel } from '../lib/format'
 import { lookupHref } from '../lib/paths'
 
 function shuffle<T>(items: T[]): T[] {
@@ -23,6 +25,8 @@ function shuffle<T>(items: T[]): T[] {
 export function Discover() {
   const { lookupLang, current } = useLanguage()
   const { refresh } = useStats()
+  const { t, languageName } = useI18n()
+  const dictionaryName = current ? languageName(current.code, current.name) : languageName(lookupLang)
   const [round, setRound] = useState<PlayRound | null>(null)
   const [meanings, setMeanings] = useState<PlayCard[]>([])
   const [picked, setPicked] = useState<string | null>(null)
@@ -45,7 +49,13 @@ export function Discover() {
       setMeanings(shuffle(next.cards))
     } catch (err) {
       setRound(null)
-      setError(err instanceof Error ? err.message : 'Could not start a round')
+      setError(
+        err instanceof ApiError && err.status === 404
+          ? t('discover.noBank', { lang: dictionaryName })
+          : err instanceof Error
+            ? err.message
+            : t('discover.failed'),
+      )
     } finally {
       setBusy(false)
     }
@@ -101,24 +111,18 @@ export function Discover() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <p className="text-xs uppercase tracking-[0.18em] text-gold">A matching game</p>
-      <h1 className="lemma mt-2 text-4xl">Discover</h1>
-      <p className="mt-3 max-w-xl text-muted">
-        Five less-common {current?.name ?? 'English'} words. Pair each with its meaning. The bank
-        is at least 2,000 lemmas for languages that have a frequency list.
-      </p>
+      <p className="text-xs uppercase tracking-[0.18em] text-gold">{t('discover.eyebrow')}</p>
+      <h1 className="lemma mt-2 text-4xl">{t('discover.title')}</h1>
+      <p className="mt-3 max-w-xl text-muted">{t('discover.intro', { language: dictionaryName })}</p>
 
       {round && (
         <p className="mt-2 text-sm text-muted">
-          Bank of {round.bankSize.toLocaleString()} words · {assignedCount}/5 paired
+          {t('discover.bank', { count: round.bankSize.toLocaleString(), paired: assignedCount })}
         </p>
       )}
 
       {busy && (
-        <p className="mt-8 text-muted">
-          Drawing five specific words
-          {current?.name ? ` from ${current.name}` : ''}…
-        </p>
+        <p className="mt-8 text-muted">{t('discover.drawing', { language: dictionaryName })}</p>
       )}
 
       {error && !busy && (
@@ -129,7 +133,7 @@ export function Discover() {
             onClick={() => void loadRound()}
             className="mt-4 rounded-full bg-ink px-4 py-2 text-sm text-paper"
           >
-            Try again
+            {t('discover.tryAgain')}
           </button>
         </div>
       )}
@@ -138,7 +142,7 @@ export function Discover() {
         <>
           <div className="mt-8 grid gap-6 md:grid-cols-2">
             <section>
-              <h2 className="mb-3 text-xs uppercase tracking-[0.16em] text-muted">Words</h2>
+              <h2 className="mb-3 text-xs uppercase tracking-[0.16em] text-muted">{t('discover.words')}</h2>
               <ul className="space-y-2">
                 {round.cards.map((card) => {
                   const hue = hashHue(card.id)
@@ -168,7 +172,7 @@ export function Discover() {
                         {card.lemma}
                         {card.partOfSpeech && (
                           <span className="ml-2 font-sans text-xs uppercase tracking-wide opacity-70">
-                            {card.partOfSpeech}
+                            {posLabel(card.partOfSpeech, t)}
                           </span>
                         )}
                         {checked && (
@@ -184,7 +188,7 @@ export function Discover() {
             </section>
 
             <section>
-              <h2 className="mb-3 text-xs uppercase tracking-[0.16em] text-muted">Meanings</h2>
+              <h2 className="mb-3 text-xs uppercase tracking-[0.16em] text-muted">{t('discover.meanings')}</h2>
               <ul className="space-y-2">
                 {meanings.map((card) => {
                   const owner = reverse[card.id]
@@ -223,13 +227,13 @@ export function Discover() {
                 onClick={() => setChecked(true)}
                 className="rounded-full bg-accent px-5 py-2 text-sm font-semibold text-paper disabled:opacity-40"
               >
-                Check matches
+                {t('discover.check')}
               </button>
             ) : (
               <p className="lemma text-2xl">
                 {score} / 5
                 <span className="ml-2 font-sans text-sm text-muted">
-                  {score === 5 ? 'All matched.' : 'Look again at the ones marked ✗.'}
+                  {score === 5 ? t('discover.allMatched') : t('discover.lookAgain')}
                 </span>
               </p>
             )}
@@ -238,7 +242,7 @@ export function Discover() {
               onClick={() => void loadRound()}
               className="rounded-full border border-rule px-4 py-2 text-sm"
             >
-              Five new words
+              {t('discover.fiveNew')}
             </button>
           </div>
 
@@ -261,7 +265,7 @@ export function Discover() {
                   </div>
                   {kept[card.id] ? (
                     <Link to={`/words/${kept[card.id]}`} className="text-sm text-saved">
-                      Kept
+                      {t('discover.kept')}
                     </Link>
                   ) : (
                     <button
@@ -269,7 +273,7 @@ export function Discover() {
                       onClick={() => void keepCard(card)}
                       className="text-sm text-accent"
                     >
-                      Keep for recall
+                      {t('discover.keep')}
                     </button>
                   )}
                 </li>

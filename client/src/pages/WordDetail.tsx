@@ -5,16 +5,19 @@ import { PhraseAnalysisView } from '../components/PhraseAnalysis'
 import { FormsLine } from '../components/SenseExtras'
 import { SenseList } from '../components/SenseList'
 import { WordGraph } from '../components/WordGraph'
+import { useI18n } from '../context/I18nContext'
 import { useStats } from '../context/StatsContext'
 import { useWordTrail } from '../context/WordTrailContext'
 import { api } from '../lib/api'
 import { keptHref, lookupHref } from '../lib/paths'
-import { explainLanguage, formatDue, isRtl, statusLabel } from '../lib/format'
+import { errorText } from '../lib/errors'
+import { formatDue, isRtl, statusLabel } from '../lib/format'
 
 export function WordPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const { refresh } = useStats()
+  const { t, explainFor, languageName } = useI18n()
   const { visit } = useWordTrail()
   const [word, setWord] = useState<WordDetail | null>(null)
   const [graph, setGraph] = useState<GraphPayload>({ nodes: [], edges: [] })
@@ -52,7 +55,7 @@ export function WordPage() {
     try {
       setWord(await api.patch(word.id, { note }))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Save failed')
+      setError(errorText(err, t, t('word.saveFailed')))
     } finally {
       setSaving(false)
     }
@@ -63,9 +66,9 @@ export function WordPage() {
     setReanalyzing(true)
     setError('')
     try {
-      setWord(await api.reanalyze(word.id, explainLanguage()))
+      setWord(await api.reanalyze(word.id, explainFor(word.language)))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Analysis failed')
+      setError(errorText(err, t, t('word.analysisFailed')))
     } finally {
       setReanalyzing(false)
     }
@@ -79,22 +82,23 @@ export function WordPage() {
 
   async function remove() {
     if (!word) return
-    if (!confirm(`Delete “${word.displayLemma}”?`)) return
+    if (!confirm(t('word.deleteConfirm', { word: word.displayLemma }))) return
     await api.remove(word.id)
     refresh()
     navigate('/words')
   }
 
   if (error && !word) return <p className="text-accent">{error}</p>
-  if (!word) return <p className="text-muted">Loading…</p>
+  if (!word) return <p className="text-muted">{t('common.loading')}</p>
   const isPhrase = word.kind === 'phrase'
 
   return (
     <article className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr]">
       <div>
         <p className="text-xs uppercase tracking-[0.18em] text-gold">
-          {isPhrase ? 'Phrase · ' : ''}
-          {word.languageName} · {statusLabel(word.status)} · {formatDue(word.dueAt)}
+          {isPhrase ? `${t('word.phrase')} · ` : ''}
+          {languageName(word.language, word.languageName)} · {statusLabel(word.status, t)} ·{' '}
+          {formatDue(word.dueAt, undefined, t)}
         </p>
         <h1
           className={`lemma mt-2 ${isPhrase ? 'text-4xl sm:text-5xl' : 'text-5xl sm:text-6xl'}`}
@@ -115,7 +119,7 @@ export function WordPage() {
               disabled={reanalyzing}
               className="mt-4 rounded-full border border-rule px-4 py-2 text-sm disabled:opacity-50"
             >
-              {reanalyzing ? 'Analyzing…' : 'Re-analyze grammar'}
+              {reanalyzing ? t('word.analyzing') : t('word.reanalyze')}
             </button>
             {error && <p className="mt-2 text-sm text-accent">{error}</p>}
           </div>
@@ -126,7 +130,7 @@ export function WordPage() {
         {word.etymology && (
           <blockquote className="mt-6 border-l-2 border-gold pl-4 leading-relaxed text-muted">
             <span className="mb-1 block text-xs uppercase tracking-[0.18em] text-gold">
-              Etymology
+              {t('home.etymology')}
             </span>
             {word.etymology}
           </blockquote>
@@ -148,7 +152,7 @@ export function WordPage() {
 
         <label className="mt-8 block">
           <span className="mb-2 block text-xs uppercase tracking-[0.16em] text-muted">
-            Optional mnemonic — the definition is above
+            {t('word.mnemonic')}
           </span>
           <textarea
             value={note}
@@ -157,7 +161,7 @@ export function WordPage() {
             className="h-28 w-full rounded-2xl border border-rule bg-paper-2 p-3 text-sm outline-none"
           />
         </label>
-        <p className="mt-1 text-xs text-muted">{saving ? 'Saving…' : 'Saved when you leave the box.'}</p>
+        <p className="mt-1 text-xs text-muted">{saving ? t('word.saving') : t('word.savedOnBlur')}</p>
 
         <div className="mt-6 flex flex-wrap gap-2">
           <button
@@ -165,19 +169,19 @@ export function WordPage() {
             onClick={() => void toggleArchive()}
             className="rounded-full border border-rule px-4 py-2 text-sm"
           >
-            {word.archivedAt ? 'Restore to recall' : 'Archive from recall'}
+            {word.archivedAt ? t('word.restore') : t('word.archive')}
           </button>
           <button type="button" onClick={() => void remove()} className="rounded-full px-4 py-2 text-sm text-accent">
-            Delete
+            {t('word.delete')}
           </button>
         </div>
       </div>
 
       <aside className="space-y-4">
         <div className="flex items-baseline justify-between">
-          <h2 className="lemma text-2xl">Language atlas</h2>
+          <h2 className="lemma text-2xl">{t('word.atlas')}</h2>
           <Link to={`/graph/${word.id}`} className="text-sm text-accent">
-            Expand
+            {t('word.expand')}
           </Link>
         </div>
         <WordGraph nodes={graph.nodes} edges={graph.edges} height={380} cap={36} />
@@ -195,10 +199,10 @@ export function WordPage() {
                 {link.lemma}
               </Link>
               <span className="text-xs text-muted">
-                {link.relation}
+                {t(`relation.${link.relation}`)}
                 {' · '}
-                {link.languageName}
-                {link.toWordId ? ' · kept' : ''}
+                {languageName(link.language, link.languageName)}
+                {link.toWordId ? ` · ${t('word.kept')}` : ''}
               </span>
             </li>
           ))}

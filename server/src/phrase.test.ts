@@ -32,6 +32,7 @@ describe('phrase analysis', () => {
       assert.equal(result.text, 'The cat sat.')
       assert.equal(result.source, 'dictionary')
       assert.match(result.note ?? '', /ANTHROPIC_API_KEY/)
+      assert.deepEqual(result.notice, { code: 'dictionary-only' })
       assert.deepEqual(
         result.tokens.map((token) => [token.text, token.partOfSpeech, token.lemma]),
         [
@@ -45,7 +46,14 @@ describe('phrase analysis', () => {
       assert.deepEqual(sat.features, ['simple past and past participle'])
       assert.match(sat.gloss, /upper body upright/)
       assert.deepEqual(result.clozeIndexes, [1, 2])
-      assert.ok(result.questions.some((item) => item.question.includes('“sat”')))
+      const satQuestion = result.questions.find((item) => item.question.includes('“sat”'))
+      assert.deepEqual(satQuestion?.template, {
+        kind: 'form',
+        text: 'sat',
+        lemma: 'sit',
+        partOfSpeech: 'verb',
+        features: ['simple past and past participle'],
+      })
       assert.equal(result.existing, null)
     } finally {
       mock.restore()
@@ -128,6 +136,7 @@ describe('phrase analysis', () => {
       )
       assert.equal(result.source, 'claude')
       assert.equal(result.note, null)
+      assert.equal(result.notice, null)
       assert.equal(result.translation, 'El gato se sentó.')
       assert.equal(result.tokens[0]!.partOfSpeech, 'determiner')
       assert.equal(result.tokens[1]!.role, 'subject')
@@ -148,6 +157,7 @@ describe('phrase analysis', () => {
       const result = await analyzePhrase('the cat', 'en')
       assert.equal(result.source, 'dictionary')
       assert.match(result.note ?? '', /overloaded/)
+      assert.deepEqual(result.notice, { code: 'claude-failed', params: { message: 'overloaded' } })
     } finally {
       mock.restore()
     }

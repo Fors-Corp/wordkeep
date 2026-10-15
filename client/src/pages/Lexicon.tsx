@@ -1,19 +1,32 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { WordSummary } from '@shared/types'
+import { useI18n } from '../context/I18nContext'
 import { useLanguage } from '../context/LanguageContext'
+import { capitalize, type MessageKey } from '../i18n'
 import { api } from '../lib/api'
 import { formatDue, isRtl, statusLabel } from '../lib/format'
 
 const FILTERS = ['all', 'due', 'new', 'learning', 'review', 'mastered', 'archived'] as const
 const KINDS = [
-  { value: '', label: 'words & phrases' },
-  { value: 'word', label: 'words' },
-  { value: 'phrase', label: 'phrases' },
+  { value: '', label: 'lexicon.kind.all' },
+  { value: 'word', label: 'lexicon.kind.word' },
+  { value: 'phrase', label: 'lexicon.kind.phrase' },
 ] as const
+
+const FILTER_LABELS: Record<(typeof FILTERS)[number], MessageKey> = {
+  all: 'lexicon.filter.all',
+  due: 'lexicon.filter.due',
+  new: 'lexicon.filter.new',
+  learning: 'lexicon.filter.learning',
+  review: 'lexicon.filter.review',
+  mastered: 'lexicon.filter.mastered',
+  archived: 'lexicon.filter.archived',
+}
 
 export function Lexicon() {
   const { languages } = useLanguage()
+  const { t, languageName, locale } = useI18n()
   const [params, setParams] = useSearchParams()
   const [words, setWords] = useState<WordSummary[]>([])
   const [error, setError] = useState('')
@@ -55,7 +68,7 @@ export function Lexicon() {
       link.click()
       URL.revokeObjectURL(href)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Export failed')
+      setError(err instanceof Error ? err.message : t('lexicon.exportFailed'))
     } finally {
       setBackupBusy('')
     }
@@ -69,7 +82,7 @@ export function Lexicon() {
       await api.importLexicon(backup, mode)
       setWords(await api.words(currentQuery()))
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Import failed')
+      setError(err instanceof Error ? err.message : t('lexicon.importFailed'))
     } finally {
       setBackupBusy('')
     }
@@ -90,14 +103,14 @@ export function Lexicon() {
     <div>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs uppercase tracking-[0.18em] text-gold">Active recall</p>
-          <h1 className="lemma text-4xl">Lexicon</h1>
+          <p className="text-xs uppercase tracking-[0.18em] text-gold">{t('lexicon.eyebrow')}</p>
+          <h1 className="lemma text-4xl">{t('lexicon.title')}</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <input
             value={q}
             onChange={(event) => update({ q: event.target.value })}
-            placeholder="Search kept words and phrases"
+            placeholder={t('lexicon.search')}
             className="w-full max-w-xs rounded-full border border-rule bg-paper px-4 py-2 text-sm outline-none"
           />
           <button
@@ -106,10 +119,10 @@ export function Lexicon() {
             className="rounded-full border border-rule px-3 py-1.5 text-sm"
             disabled={Boolean(backupBusy)}
           >
-            {backupBusy === 'export' ? 'Exporting…' : 'Export'}
+            {backupBusy === 'export' ? t('lexicon.exporting') : t('lexicon.export')}
           </button>
           <label className="cursor-pointer rounded-full border border-rule px-3 py-1.5 text-sm">
-            {backupBusy === 'merge' || backupBusy === 'replace' ? 'Importing…' : 'Import'}
+            {backupBusy === 'merge' || backupBusy === 'replace' ? t('lexicon.importing') : t('lexicon.import')}
             <input
               type="file"
               accept="application/json,.json"
@@ -119,7 +132,7 @@ export function Lexicon() {
                 const file = event.target.files?.[0]
                 event.target.value = ''
                 if (!file) return
-                const replace = window.confirm('Replace the whole lexicon with this backup? Cancel to merge.')
+                const replace = window.confirm(t('lexicon.replaceConfirm'))
                 void uploadBackup(file, replace ? 'replace' : 'merge')
               }}
             />
@@ -139,12 +152,12 @@ export function Lexicon() {
                 : 'bg-chip text-muted'
             }`}
           >
-            {item === 'mastered' ? 'kept' : item === 'due' ? 'due today' : item}
+            {t(FILTER_LABELS[item])}
           </button>
         ))}
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="Entry type">
+      <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label={t('lexicon.kind.label')}>
         {KINDS.map((item) => (
           <button
             key={item.value}
@@ -155,7 +168,7 @@ export function Lexicon() {
               kind === item.value ? 'bg-ink text-paper' : 'bg-chip text-muted'
             }`}
           >
-            {item.label}
+            {t(item.label)}
           </button>
         ))}
       </div>
@@ -167,7 +180,7 @@ export function Lexicon() {
             onClick={() => update({ language: '' })}
             className={`rounded-full px-3 py-1 text-xs ${language ? 'bg-chip text-muted' : 'bg-ink text-paper'}`}
           >
-            every language
+            {t('lexicon.everyLanguage')}
           </button>
           {(language && !usedLangs.includes(language) ? [language, ...usedLangs] : usedLangs).map(
             (code) => (
@@ -179,7 +192,7 @@ export function Lexicon() {
                   language === code ? 'bg-ink text-paper' : 'bg-chip text-muted'
                 }`}
               >
-                {languages.find((item) => item.code === code)?.name ?? code}
+                {capitalize(languageName(code, languages.find((item) => item.code === code)?.name ?? code), locale)}
               </button>
             ),
           )}
@@ -190,7 +203,7 @@ export function Lexicon() {
 
       {words.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-rule px-4 py-12 text-center text-muted">
-          Nothing here yet. Introduce a word or phrase and keep it for recall.
+          {t('lexicon.empty')}
         </p>
       ) : (
         <ul className="divide-y divide-rule rounded-3xl border border-rule bg-paper">
@@ -208,13 +221,13 @@ export function Lexicon() {
                 </span>
                 {word.kind === 'phrase' && (
                   <span className="rounded-full bg-chip px-2 py-0.5 text-xs uppercase tracking-wide text-phrase">
-                    phrase
+                    {t('lexicon.phraseBadge')}
                   </span>
                 )}
                 <span className="min-w-48 flex-1 text-sm text-muted line-clamp-2 sm:line-clamp-1">{word.gloss}</span>
                 <span className="font-mono text-xs uppercase text-gold">{word.language}</span>
-                <span className="text-xs text-muted">{statusLabel(word.status)}</span>
-                <span className="text-xs text-accent">{formatDue(word.dueAt)}</span>
+                <span className="text-xs text-muted">{statusLabel(word.status, t)}</span>
+                <span className="text-xs text-accent">{formatDue(word.dueAt, undefined, t)}</span>
               </Link>
             </li>
           ))}
