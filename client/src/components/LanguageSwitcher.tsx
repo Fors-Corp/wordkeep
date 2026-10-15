@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../context/I18nContext'
+import { capitalize } from '../i18n'
 import { useLanguage } from '../context/LanguageContext'
 import { languageLine, nativeLanguageName } from '../lib/format'
 
 export function LanguageSwitcher() {
   const { languages, lookupLang, setLookupLang, current } = useLanguage()
-  const { t, languageName } = useI18n()
+  const { t, languageName, locale } = useI18n()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
@@ -56,7 +57,7 @@ export function LanguageSwitcher() {
           {lookupLang}
         </span>
         <span className="truncate">
-          {current ? languageName(current.code, current.name) : t('dictLang.fallback')}
+          {current ? capitalize(languageName(current.code, current.name), locale) : t('dictLang.fallback')}
         </span>
         <span className="ml-auto text-muted">▾</span>
       </button>

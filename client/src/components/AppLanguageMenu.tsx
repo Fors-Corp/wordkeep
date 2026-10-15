@@ -1,15 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { useI18n } from '../context/I18nContext'
 import { LOCALES } from '../i18n'
-
-function GlobeIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <circle cx="10" cy="10" r="7.25" />
-      <path d="M2.75 10h14.5M10 2.75c2 2.1 3 4.5 3 7.25s-1 5.15-3 7.25c-2-2.1-3-4.5-3-7.25s1-5.15 3-7.25Z" />
-    </svg>
-  )
-}
+import { Flag } from './Flag'
 
 /**
  * Header menu for the app's own language, plus whether phrase analyses are
@@ -48,14 +40,17 @@ export function AppLanguageMenu() {
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex items-center gap-1.5 rounded-full border border-rule bg-paper-2 px-3 py-1.5 text-sm text-ink hover:border-accent"
+        className="flex items-center gap-2 rounded-full border border-rule bg-paper-2 py-1.5 pl-2 pr-3 text-sm text-ink hover:border-accent"
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={`${t('appLang.button')}: ${current.native}`}
         title={t('appLang.button')}
       >
-        <GlobeIcon />
+        <Flag locale={current.code} className="h-3.5 w-5" />
         <span className="font-mono text-xs uppercase tracking-wide">{current.code}</span>
+        <span className="text-muted" aria-hidden="true">
+          ▾
+        </span>
       </button>
 
       {open && (
@@ -82,14 +77,20 @@ export function AppLanguageMenu() {
                     aria-checked={selected}
                     lang={item.code}
                     onClick={() => setLocale(item.code)}
-                    className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-sm ${
+                    className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-sm ${
                       selected ? 'border-accent bg-chip text-ink' : 'border-rule hover:border-ink'
                     }`}
                   >
-                    <span className="font-medium">{item.native}</span>
-                    <span className={`font-mono text-xs uppercase ${selected ? 'text-accent' : 'text-muted'}`}>
-                      {selected ? '✓' : item.code}
+                    <Flag locale={item.code} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">{item.native}</span>
+                      <span className="block font-mono text-xs uppercase text-muted">{item.code}</span>
                     </span>
+                    {selected && (
+                      <span className="text-accent" aria-hidden="true">
+                        ✓
+                      </span>
+                    )}
                   </button>
                 )
               })}

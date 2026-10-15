@@ -4,7 +4,7 @@ import { de } from './de'
 import { en } from './en'
 import { es } from './es'
 import { fr } from './fr'
-import { detectLocale, LOCALES, languageNameIn, translator } from './index'
+import { capitalize, detectLocale, LOCALES, languageNameIn, translator } from './index'
 import { it as italian } from './it'
 import { pt } from './pt'
 
@@ -45,5 +45,6 @@ describe('translations', () => {
   it('names languages in the app language', () => {
     expect(languageNameIn('de', 'es')).toBe('alemán')
     expect(languageNameIn('xx-nope', 'en', 'Mystery')).toBe('Mystery')
+    expect(capitalize(languageNameIn('ca', 'ca'), 'ca')).toBe('Català')
   })
 })

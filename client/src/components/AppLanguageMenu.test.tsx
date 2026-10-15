@@ -60,6 +60,15 @@ describe('app language menu', () => {
 
     await user.click(screen.getByRole('button', { name: /App language/ }))
     const catalan = screen.getByRole('radio', { name: /Català/ })
+    for (const radio of screen.getAllByRole('radio')) {
+      const code = radio.getAttribute('lang')!
+      expect(radio.querySelector(`svg[data-flag="${code}"]`)).not.toBeNull()
+      expect(radio).toHaveTextContent(code)
+    }
+    expect(screen.getAllByRole('radio')).toHaveLength(7)
+    expect(
+      screen.getByRole('button', { name: /App language/ }).querySelector('svg[data-flag="en"]'),
+    ).not.toBeNull()
     expect(screen.getByRole('radio', { name: /English/ })).toHaveAttribute('aria-checked', 'true')
     await user.click(catalan)
 

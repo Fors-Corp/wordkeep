@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import type { WordSummary } from '@shared/types'
 import { useI18n } from '../context/I18nContext'
 import { useLanguage } from '../context/LanguageContext'
-import type { MessageKey } from '../i18n'
+import { capitalize, type MessageKey } from '../i18n'
 import { api } from '../lib/api'
 import { formatDue, isRtl, statusLabel } from '../lib/format'
 
@@ -26,7 +26,7 @@ const FILTER_LABELS: Record<(typeof FILTERS)[number], MessageKey> = {
 
 export function Lexicon() {
   const { languages } = useLanguage()
-  const { t, languageName } = useI18n()
+  const { t, languageName, locale } = useI18n()
   const [params, setParams] = useSearchParams()
   const [words, setWords] = useState<WordSummary[]>([])
   const [error, setError] = useState('')
@@ -192,7 +192,7 @@ export function Lexicon() {
                   language === code ? 'bg-ink text-paper' : 'bg-chip text-muted'
                 }`}
               >
-                {languageName(code, languages.find((item) => item.code === code)?.name ?? code)}
+                {capitalize(languageName(code, languages.find((item) => item.code === code)?.name ?? code), locale)}
               </button>
             ),
           )}

@@ -70,4 +70,9 @@ export function languageNameIn(code: string, locale: Locale, fallback = code): s
   return fallback
 }
 
+/** Upper-cases the first letter, for a language name standing on its own (“català” → “Català”). */
+export function capitalize(text: string, locale: string): string {
+  return text ? text.charAt(0).toLocaleUpperCase(locale) + text.slice(1) : text
+}
+
 export const english = translator('en')
