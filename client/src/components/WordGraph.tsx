@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import type { GraphEdge, GraphNode } from '@shared/types'
@@ -191,6 +191,7 @@ export function WordGraph({
   const { t } = useI18n()
   const wrapRef = useRef<HTMLDivElement>(null)
   const hostRef = useRef<HTMLDivElement>(null)
+  const [noGl, setNoGl] = useState(false)
 
   const trimmed = useMemo(() => {
     const center = nodes.find((node) => node.kind === 'center')
@@ -223,7 +224,14 @@ export function WordGraph({
     const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 800)
     camera.position.set(48, 32, 88)
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
+    let renderer: THREE.WebGLRenderer
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
+    } catch {
+      // No WebGL (blocked, old device, or out of contexts): list the links instead.
+      setNoGl(true)
+      return
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setSize(width, height)
     renderer.domElement.style.display = 'block'
@@ -428,6 +436,29 @@ export function WordGraph({
       <p className="rounded-2xl border border-dashed border-rule px-4 py-10 text-center text-muted">
         {t('graph.empty')}
       </p>
+    )
+  }
+
+  if (noGl) {
+    return (
+      <div className="rounded-2xl border border-rule bg-paper-2 p-4">
+        <p className="mb-3 text-sm text-muted">{t('graph.noGl')}</p>
+        <ul className="flex flex-wrap gap-2">
+          {trimmed.nodes.map((node) => (
+            <li key={node.id}>
+              <Link
+                to={node.wordId ? keptHref(node.wordId) : lookupHref(node.label, node.language)}
+                className={`lemma inline-block rounded-full border px-3 py-1 ${
+                  node.kind === 'center' ? 'border-ink bg-ink text-paper' : 'border-rule bg-paper'
+                }`}
+              >
+                {node.label}
+                <span className="ml-1 font-mono text-xs uppercase opacity-70">{node.language}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
     )
   }
 

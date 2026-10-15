@@ -1,4 +1,7 @@
+import { entryFromPhrase, type StoredEntry } from '@shared/lexicon'
+import { phraseGloss } from '@shared/phrase'
 import type { PhraseAnalysis, PhraseToken, WordDetail } from '@shared/types'
+import { openDeviceStore } from '../lib/store'
 
 function token(index: number, start: number, text: string, extra: Partial<PhraseToken> = {}): PhraseToken {
   return {
@@ -80,4 +83,21 @@ export function phraseWord(overrides: Partial<WordDetail> = {}): WordDetail {
     analysis,
     ...overrides,
   }
+}
+
+/** A kept phrase as the device stores it, due for review now. */
+export function phraseEntry(overrides: Partial<StoredEntry> = {}, analysis = phraseFixture()): StoredEntry {
+  const entry = entryFromPhrase(analysis, phraseGloss(analysis), { id: overrides.id ?? 'p1', now: 0 })
+  return { ...entry, ...overrides }
+}
+
+/** Puts records on the (fake) device before the app opens. */
+export async function seedDevice(entries: StoredEntry[]) {
+  const store = await openDeviceStore()
+  await store.putEntries(entries)
+  await store.setMeta('legacyChecked', true)
+}
+
+export async function deviceEntries(): Promise<StoredEntry[]> {
+  return (await openDeviceStore()).loadEntries()
 }

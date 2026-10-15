@@ -5,7 +5,6 @@ import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { app } from './app.ts'
 import { ensureLanguages } from './languages.ts'
-import { seedGraphDemo } from './seed-graph.ts'
 import { warmupSuggestBanks } from './suggest.ts'
 
 export { app }
@@ -24,13 +23,6 @@ if (existsSync(join(clientDist, 'index.html'))) {
   })
 }
 
-if (process.env.WORDKEEP_SEED === '1') {
-  try {
-    seedGraphDemo()
-  } catch (error) {
-    console.error('Graph seed skipped', error)
-  }
-}
 
 if (!process.env.WORDKEEP_SKIP_WARMUP) {
   ensureLanguages()

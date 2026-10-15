@@ -5,7 +5,7 @@ import App from './App.tsx'
 import { AuthGate } from './components/AuthGate.tsx'
 import { I18nProvider } from './context/I18nContext.tsx'
 import { LanguageProvider } from './context/LanguageContext.tsx'
-import { StatsProvider } from './context/StatsContext.tsx'
+import { LexiconProvider } from './context/LexiconContext.tsx'
 import { ThemeProvider } from './context/ThemeContext.tsx'
 import { WordTrailProvider } from './context/WordTrailContext.tsx'
 import './index.css'
@@ -17,11 +17,11 @@ createRoot(document.getElementById('root')!).render(
         <BrowserRouter>
           <AuthGate>
             <LanguageProvider>
-              <StatsProvider>
+              <LexiconProvider>
                 <WordTrailProvider>
                   <App />
                 </WordTrailProvider>
-              </StatsProvider>
+              </LexiconProvider>
             </LanguageProvider>
           </AuthGate>
         </BrowserRouter>

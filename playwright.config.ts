@@ -16,7 +16,7 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
     {
-      command: `WORDKEEP_DB=${dbPath} PORT=${apiPort} WORDKEEP_SKIP_WARMUP=1 WORDKEEP_SEED=1 npm run start -w server`,
+      command: `rm -f ${dbPath}* && WORDKEEP_DB=${dbPath} PORT=${apiPort} WORDKEEP_SKIP_WARMUP=1 npm run start -w server`,
       url: `http://127.0.0.1:${apiPort}/api/health`,
       reuseExistingServer: false,
       timeout: 120_000,

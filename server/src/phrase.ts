@@ -6,7 +6,7 @@ import {
   normalizePhrase,
   segmentPhrase,
 } from '../../shared/phrase.ts'
-import { findWordId, normalizeLemma } from './db.ts'
+import { normalizeLemma } from './db.ts'
 import { readSharedAnalysis, takeAiAllowance, writeSharedAnalysis } from './ai-limits.ts'
 import { analyzeGrammar, grammarAnalyzerActive, grammarModel, type ClaudeGrammar } from './grammar-ai.ts'
 import { languageName } from './languages.ts'
@@ -220,13 +220,9 @@ function mergeClaude(base: PhraseAnalysis, ai: ClaudeGrammar): PhraseAnalysis {
   }
 }
 
-export function phraseLemma(text: string, lang: string): string {
-  return normalizeLemma(normalizePhrase(text), lang)
-}
-
+/** The server keeps no lexicon; the device fills in whether the phrase is already kept. */
 function withExisting(analysis: PhraseAnalysis): PhraseAnalysis {
-  const id = findWordId(phraseLemma(analysis.text, analysis.language), analysis.language)
-  return { ...analysis, existing: id ? { id } : null }
+  return { ...analysis, existing: null }
 }
 
 /**
@@ -372,15 +368,4 @@ export async function analyzePhrase(
 
   if (!infos.some((info) => info.failed)) remember(analysisCache, cacheKey, analysis, MAX_ANALYSIS_CACHE)
   return withExisting(analysis)
-}
-
-/** One-line meaning used as the lexicon gloss and the review answer. */
-export function phraseGloss(analysis: PhraseAnalysis): string {
-  if (analysis.translation) return analysis.translation
-  if (analysis.idioms[0]?.meaning) return analysis.idioms[0].meaning
-  if (analysis.summary) return analysis.summary
-  const parts = analysis.tokens
-    .filter((token) => !token.punct && token.gloss)
-    .map((token) => `${token.text}: ${token.gloss.replace(/\.$/, '')}`)
-  return parts.join(' · ').slice(0, 400) || analysis.text
 }

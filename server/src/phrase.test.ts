@@ -2,7 +2,8 @@ import './test/db-env.ts'
 import assert from 'node:assert/strict'
 import { afterEach, describe, it } from 'node:test'
 import { setGrammarAnalyzer, type GrammarRequest } from './grammar-ai.ts'
-import { PhraseInputError, analyzePhrase, clearPhraseCache, parseFormOf, phraseGloss } from './phrase.ts'
+import { phraseGloss } from '../../shared/phrase.ts'
+import { PhraseInputError, analyzePhrase, clearPhraseCache, parseFormOf } from './phrase.ts'
 import { PHRASE_WORDS, installPhraseDictionaryMock } from './test/fixtures.ts'
 
 describe('phrase analysis', () => {

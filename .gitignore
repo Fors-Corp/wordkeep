@@ -5,7 +5,7 @@ dist
 server/data
 .env
 .vercel
-public
+/public
 .fly
 data
 test-results

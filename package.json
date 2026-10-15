@@ -1,7 +1,7 @@
 {
   "name": "wordkeep",
   "private": true,
-  "version": "1.3.0",
+  "version": "2.0.0",
   "type": "module",
   "license": "MIT",
   "engines": {
@@ -18,9 +18,8 @@
     "typecheck": "npm run typecheck -w server && npm run typecheck -w client",
     "test:e2e": "playwright test",
     "build": "npm run build -w client",
-    "build:api": "npx esbuild server/src/vercel-handler.ts --bundle --platform=node --format=esm --outfile=api/index.js --packages=bundle",
-    "start": "npm run start -w server",
-    "seed:graph": "npm run seed:graph -w server"
+    "build:api": "npx esbuild server/src/vercel-handler.ts --bundle --platform=node --format=esm --outfile=api/index.js --packages=bundle --banner:js=\"import { createRequire as wordkeepRequire } from 'node:module'; const require = wordkeepRequire(import.meta.url);\"",
+    "start": "npm run start -w server"
   },
   "workspaces": [
     "client",

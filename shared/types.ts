@@ -87,13 +87,6 @@ export type WordDetail = WordSummary & {
   analysis: PhraseAnalysis | null
 }
 
-export type KeepWordInput = {
-  q: string
-  lang: string
-  note?: string
-  primarySenseIndex?: number
-}
-
 export type Stats = {
   dueToday: number
   newCount: number
@@ -231,11 +224,4 @@ export type PhraseAnalysis = {
   note: string | null
   notice?: PhraseNotice | null
   existing: { id: string } | null
-}
-
-export type KeepPhraseInput = {
-  text: string
-  lang: string
-  explain?: string
-  note?: string
 }

@@ -1,12 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import type { GraphPayload, WordDetail } from '@shared/types'
 import { PhraseAnalysisView } from '../components/PhraseAnalysis'
 import { FormsLine } from '../components/SenseExtras'
 import { SenseList } from '../components/SenseList'
 import { WordGraph } from '../components/WordGraph'
 import { useI18n } from '../context/I18nContext'
-import { useStats } from '../context/StatsContext'
+import { useLexicon } from '../context/LexiconContext'
 import { useWordTrail } from '../context/WordTrailContext'
 import { api } from '../lib/api'
 import { keptHref, lookupHref } from '../lib/paths'
@@ -16,27 +15,22 @@ import { formatDue, isRtl, statusLabel } from '../lib/format'
 export function WordPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
-  const { refresh } = useStats()
+  const { device, lexicon, ready } = useLexicon()
   const { t, explainFor, languageName } = useI18n()
   const { visit } = useWordTrail()
-  const [word, setWord] = useState<WordDetail | null>(null)
-  const [graph, setGraph] = useState<GraphPayload>({ nodes: [], edges: [] })
+  const word = useMemo(() => lexicon.detail(id), [lexicon, id])
+  const graph = useMemo(() => lexicon.graph(id), [lexicon, id])
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
   const [reanalyzing, setReanalyzing] = useState(false)
+  const missing = ready && !word
 
   useEffect(() => {
-    if (!id) return
-    api
-      .word(id)
-      .then((item) => {
-        setWord(item)
-        setNote(item.note)
-      })
-      .catch((err: Error) => setError(err.message))
-    api.graph(id).then(setGraph).catch(() => undefined)
-  }, [id])
+    setNote(word?.note ?? '')
+    setError('')
+    // Only when another entry opens (or it first loads); typing must not be overwritten.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [word?.id])
 
   useEffect(() => {
     if (!word) return
@@ -49,16 +43,9 @@ export function WordPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [word?.id, word?.lemma, word?.language, word?.displayLemma, visit])
 
-  async function saveNote() {
-    if (!word) return
-    setSaving(true)
-    try {
-      setWord(await api.patch(word.id, { note }))
-    } catch (err) {
-      setError(errorText(err, t, t('word.saveFailed')))
-    } finally {
-      setSaving(false)
-    }
+  function saveNote() {
+    if (!word || note === word.note) return
+    device?.patch(word.id, { note })
   }
 
   async function reanalyze() {
@@ -66,7 +53,8 @@ export function WordPage() {
     setReanalyzing(true)
     setError('')
     try {
-      setWord(await api.reanalyze(word.id, explainFor(word.language)))
+      const analysis = await api.analyzePhrase(word.displayLemma, word.language, explainFor(word.language))
+      device?.reanalyze(word.id, analysis)
     } catch (err) {
       setError(errorText(err, t, t('word.analysisFailed')))
     } finally {
@@ -74,21 +62,29 @@ export function WordPage() {
     }
   }
 
-  async function toggleArchive() {
+  function toggleArchive() {
     if (!word) return
-    setWord(await api.patch(word.id, { archived: !word.archivedAt }))
-    refresh()
+    device?.patch(word.id, { archived: !word.archivedAt })
   }
 
-  async function remove() {
+  function remove() {
     if (!word) return
     if (!confirm(t('word.deleteConfirm', { word: word.displayLemma }))) return
-    await api.remove(word.id)
-    refresh()
+    device?.remove(word.id)
     navigate('/words')
   }
 
-  if (error && !word) return <p className="text-accent">{error}</p>
+  if (missing) {
+    return (
+      <div className="mx-auto max-w-lg py-16 text-center">
+        <h1 className="lemma text-3xl">{t('word.notFound')}</h1>
+        <p className="mt-3 text-muted">{t('word.notFoundHint')}</p>
+        <Link to="/words" className="mt-6 inline-block rounded-full bg-ink px-4 py-2 text-sm text-paper">
+          {t('word.backToLexicon')}
+        </Link>
+      </div>
+    )
+  }
   if (!word) return <p className="text-muted">{t('common.loading')}</p>
   const isPhrase = word.kind === 'phrase'
 
@@ -142,9 +138,8 @@ export function WordPage() {
               senses={word.senses}
               language={word.language}
               primaryId={word.primarySenseId}
-              onPick={async (_index, sense) => {
-                if (!sense.id) return
-                setWord(await api.patch(word.id, { primarySenseId: sense.id }))
+              onPick={(_index, sense) => {
+                if (sense.id) device?.patch(word.id, { primarySenseId: sense.id })
               }}
             />
           </div>
@@ -157,21 +152,21 @@ export function WordPage() {
           <textarea
             value={note}
             onChange={(event) => setNote(event.target.value)}
-            onBlur={() => void saveNote()}
+            onBlur={() => saveNote()}
             className="h-28 w-full rounded-2xl border border-rule bg-paper-2 p-3 text-sm outline-none"
           />
         </label>
-        <p className="mt-1 text-xs text-muted">{saving ? t('word.saving') : t('word.savedOnBlur')}</p>
+        <p className="mt-1 text-xs text-muted">{t('word.savedOnBlur')}</p>
 
         <div className="mt-6 flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => void toggleArchive()}
+            onClick={() => toggleArchive()}
             className="rounded-full border border-rule px-4 py-2 text-sm"
           >
             {word.archivedAt ? t('word.restore') : t('word.archive')}
           </button>
-          <button type="button" onClick={() => void remove()} className="rounded-full px-4 py-2 text-sm text-accent">
+          <button type="button" onClick={() => remove()} className="rounded-full px-4 py-2 text-sm text-accent">
             {t('word.delete')}
           </button>
         </div>

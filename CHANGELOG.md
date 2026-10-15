@@ -2,6 +2,28 @@
 
 All notable changes to Wordkeep are documented here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [2.0.0] - 2026-10-15
+
+### Changed
+
+- **Your lexicon is stored on your device** (the browser's IndexedDB) instead of on the server. On Vercel, each serverless instance kept its own copy, so a kept word could open as “Not found” moments later. Every page now reads and writes the lexicon locally and works without a server round trip.
+- First visit starts with an empty lexicon. **Load sample words** adds the linked demo cluster and a sample phrase.
+- Every edit is stamped later than the version it changed, so an edit is never lost to a device whose clock runs behind.
+
+### Added
+
+- Sync between devices with a private code (Lexicon → Sync across devices). Entries merge per record and the newest change wins; deletions sync as tombstones. The server stores records under a hash of the code.
+- `POST /api/sync`, backed by Turso (`TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`) or the server's SQLite file when self-hosted. On Vercel without Turso it answers `503 sync-unavailable`, and the app says so.
+- Older servers hand their stored words to the first browser that opens them (`GET /api/legacy/export`). Backups from 1.x import as before.
+- Installable on phones: web app manifest and Home Screen icons. On iPhone this keeps Safari from clearing the lexicon after 7 days without a visit.
+- When a device cannot draw the 3D atlas, it shows the links as a list instead of failing the page.
+- A clear “entry not found” page in the app language, with a way back to the lexicon.
+
+### Removed
+
+- The server's lexicon API: `/api/words*`, `/api/phrases`, `/api/review*`, `/api/stats`, `/api/graph`, `/api/export`, `/api/import`. Lookup, phrase analysis, suggestions and Discover are unchanged.
+- `WORDKEEP_SEED` and `npm run seed:graph`; sample words now load from the app.
+
 ## [1.3.0] - 2026-10-15
 
 ### Added
