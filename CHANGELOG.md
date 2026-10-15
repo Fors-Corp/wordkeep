@@ -2,6 +2,13 @@
 
 All notable changes to Wordkeep are documented here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.2.1] - 2026-10-15
+
+### Fixed
+
+- On Vercel, API routes with more than one path segment (`/api/phrase/analyze`, `/api/words/recent`, `/api/words/:id`, `/api/review/queue`, `/api/play/round`, …) returned 404. The API now deploys as a single `api/index.js` function and every `/api/*` path is rewritten to it.
+- Phone keyboard suggestions and autocorrect work in the search box, in the selected dictionary language. Phrases start with a capital letter; single words do not.
+
 ## [1.2.0] - 2026-10-15
 
 ### Added

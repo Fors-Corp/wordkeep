@@ -1,7 +1,7 @@
 {
   "name": "wordkeep",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.2.1",
   "type": "module",
   "license": "MIT",
   "engines": {
@@ -18,7 +18,7 @@
     "typecheck": "npm run typecheck -w server && npm run typecheck -w client",
     "test:e2e": "playwright test",
     "build": "npm run build -w client",
-    "build:api": "npx esbuild server/src/vercel-handler.ts --bundle --platform=node --format=esm --outfile='api/[...path].js' --packages=bundle",
+    "build:api": "npx esbuild server/src/vercel-handler.ts --bundle --platform=node --format=esm --outfile=api/index.js --packages=bundle",
     "start": "npm run start -w server",
     "seed:graph": "npm run seed:graph -w server"
   },

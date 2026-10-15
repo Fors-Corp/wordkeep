@@ -61,6 +61,9 @@ describe('phrases', () => {
     const user = userEvent.setup()
     renderAt('/')
     const box = await screen.findByRole('combobox', { name: 'Word or phrase to look up' })
+    expect(box).toHaveAttribute('autocorrect', 'on')
+    expect(box).toHaveAttribute('spellcheck', 'true')
+    expect(box).toHaveAttribute('lang', 'en')
     await user.type(box, 'The cat sat.')
 
     expect(screen.getByRole('button', { name: 'Phrase' })).toHaveAttribute('aria-pressed', 'true')

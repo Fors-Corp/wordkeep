@@ -6,7 +6,6 @@ server/data
 .env
 .vercel
 public
-api/[...path].js
 .fly
 data
 test-results
