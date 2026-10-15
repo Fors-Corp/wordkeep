@@ -505,6 +505,7 @@ export const DEMO_PHRASE: PhraseAnalysis = {
   ],
   clozeIndexes: [1, 3],
   note: 'Demo phrase with a hand-written analysis.',
+  notice: { code: 'demo' },
   existing: null,
 }
 

@@ -5,15 +5,17 @@ import { phraseCardFor, type PhraseCard } from '@shared/phrase'
 import { previewInterval, recallStateFrom } from '@shared/sm2'
 import { PhraseAnalysisView } from '../components/PhraseAnalysis'
 import { SenseExtras } from '../components/SenseExtras'
+import { useI18n } from '../context/I18nContext'
+import type { MessageKey, Translate } from '../i18n'
 import { useStats } from '../context/StatsContext'
 import { api } from '../lib/api'
-import { isRtl } from '../lib/format'
+import { isRtl, posLabel } from '../lib/format'
 
-const GRADE_META: Array<{ grade: Grade; label: string; key: string }> = [
-  { grade: 'again', label: 'Again', key: '1' },
-  { grade: 'hard', label: 'Hard', key: '2' },
-  { grade: 'good', label: 'Good', key: '3' },
-  { grade: 'easy', label: 'Easy', key: '4' },
+const GRADE_META: Array<{ grade: Grade; label: MessageKey; key: string }> = [
+  { grade: 'again', label: 'review.again', key: '1' },
+  { grade: 'hard', label: 'review.hard', key: '2' },
+  { grade: 'good', label: 'review.good', key: '3' },
+  { grade: 'easy', label: 'review.easy', key: '4' },
 ]
 
 function seedFrom(id: string): number {
@@ -22,18 +24,44 @@ function seedFrom(id: string): number {
   return total
 }
 
-const PHRASE_PROMPT: Record<PhraseCard['mode'], string> = {
-  meaning: 'What does it mean?',
-  cloze: 'Fill the gap',
-  grammar: 'Grammar question',
+const PHRASE_PROMPT: Record<PhraseCard['mode'], MessageKey> = {
+  meaning: 'review.mode.meaning',
+  cloze: 'review.mode.cloze',
+  grammar: 'review.mode.grammar',
+}
+
+/** Dictionary-made questions carry a template so they read in the app language. */
+function localizedQuiz(quiz: PhraseCard, card: WordDetail, t: Translate): PhraseCard {
+  if (quiz.mode === 'cloze') {
+    const token = card.analysis?.tokens[quiz.tokenIndex]
+    const hint = token
+      ? [token.lemma && token.lemma !== token.text ? token.lemma : '', posLabel(token.partOfSpeech, t)]
+          .filter(Boolean)
+          .join(' · ')
+      : quiz.hint
+    return { ...quiz, hint }
+  }
+  if (quiz.mode !== 'grammar') return quiz
+  const source = card.analysis?.questions.find((item) => item.question === quiz.question)
+  const template = source?.template
+  if (!template) return quiz
+  const pos = posLabel(template.partOfSpeech, t)
+  return template.kind === 'form'
+    ? {
+        mode: 'grammar',
+        question: t('quiz.form', { lemma: template.lemma, text: template.text }),
+        answer: `${template.features.join(', ')}${pos ? ` (${pos})` : ''}`,
+      }
+    : { mode: 'grammar', question: t('quiz.pos', { text: template.text }), answer: pos }
 }
 
 function PhraseFront({ card, quiz }: { card: WordDetail; quiz: PhraseCard }) {
+  const { t, languageName } = useI18n()
   const dir = isRtl(card.language) ? 'rtl' : 'ltr'
   return (
     <>
       <p className="text-xs uppercase tracking-[0.18em] text-gold">
-        {card.languageName} · {PHRASE_PROMPT[quiz.mode]}
+        {languageName(card.language, card.languageName)} · {t(PHRASE_PROMPT[quiz.mode])}
       </p>
       <h1 className="lemma mt-3 text-center text-3xl sm:text-4xl" dir={dir}>
         {quiz.mode === 'cloze' ? quiz.prompt : card.displayLemma}
@@ -45,6 +73,7 @@ function PhraseFront({ card, quiz }: { card: WordDetail; quiz: PhraseCard }) {
 }
 
 function PhraseBack({ card, quiz }: { card: WordDetail; quiz: PhraseCard }) {
+  const { t } = useI18n()
   return (
     <>
       {quiz.mode === 'cloze' && (
@@ -54,7 +83,7 @@ function PhraseBack({ card, quiz }: { card: WordDetail; quiz: PhraseCard }) {
       )}
       {quiz.mode === 'grammar' && (
         <p className="text-lg leading-relaxed">
-          <span className="mr-2 text-xs uppercase tracking-[0.16em] text-accent">Answer</span>
+          <span className="mr-2 text-xs uppercase tracking-[0.16em] text-accent">{t('review.answer')}</span>
           {quiz.answer}
         </p>
       )}
@@ -78,7 +107,8 @@ function PhraseBack({ card, quiz }: { card: WordDetail; quiz: PhraseCard }) {
 }
 
 export function Review() {
-  const { stats, refresh } = useStats()
+  const { refresh } = useStats()
+  const { t, languageName } = useI18n()
   const [queue, setQueue] = useState<WordDetail[]>([])
   const [index, setIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
@@ -135,22 +165,19 @@ export function Review() {
     setFlipped(false)
   }
 
-  if (loading) return <p className="text-muted">Shuffling the stack…</p>
+  if (loading) return <p className="text-muted">{t('review.loading')}</p>
 
   if (!card) {
     return (
       <div className="mx-auto max-w-lg py-16 text-center">
-        <h1 className="lemma text-4xl">Nothing due.</h1>
-        <p className="mt-3 text-muted">
-          {stats?.lexiconCount || 'Your'} words are waiting. Come back when a card ripens, or
-          introduce another.
-        </p>
+        <h1 className="lemma text-4xl">{t('review.nothingDue')}</h1>
+        <p className="mt-3 text-muted">{t('review.waiting')}</p>
         <div className="mt-6 flex justify-center gap-3">
           <Link to="/" className="rounded-full bg-accent px-4 py-2 text-sm text-paper">
-            Introduce a word
+            {t('review.introduce')}
           </Link>
           <Link to="/words" className="rounded-full border border-rule px-4 py-2 text-sm">
-            Open lexicon
+            {t('review.openLexicon')}
           </Link>
         </div>
       </div>
@@ -160,12 +187,14 @@ export function Review() {
   const primary =
     card.senses.find((sense) => sense.id === card.primarySenseId) ?? card.senses[0]
   const quiz =
-    card.kind === 'phrase' ? phraseCardFor(card.analysis, card.repetitions + seedFrom(card.id)) : null
+    card.kind === 'phrase'
+      ? localizedQuiz(phraseCardFor(card.analysis, card.repetitions + seedFrom(card.id)), card, t)
+      : null
 
   return (
     <div className="mx-auto max-w-2xl">
       <p className="mb-4 text-sm text-muted">
-        {index + 1} of {queue.length} due · {done} done this sitting
+        {t('review.progress', { index: index + 1, total: queue.length, done })}
       </p>
       <div className="[perspective:1400px]">
         <button
@@ -180,7 +209,9 @@ export function Review() {
               <PhraseFront card={card} quiz={quiz} />
             ) : (
               <>
-                <p className="text-xs uppercase tracking-[0.18em] text-gold">{card.languageName}</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-gold">
+                  {languageName(card.language, card.languageName)}
+                </p>
                 <h1
                   className="lemma mt-3 text-center text-5xl sm:text-6xl"
                   dir={isRtl(card.language) ? 'rtl' : 'ltr'}
@@ -190,14 +221,16 @@ export function Review() {
                 {card.phonetic && <p className="mt-3 text-muted">{card.phonetic}</p>}
               </>
             )}
-            <p className="mt-8 text-sm text-muted">Space to flip</p>
+            <p className="mt-8 text-sm text-muted">{t('review.flip')}</p>
           </div>
           <div className="card-side card-back absolute inset-0 overflow-auto p-8">
             {quiz ? (
               <PhraseBack card={card} quiz={quiz} />
             ) : (
               <>
-                <p className="text-xs uppercase tracking-[0.16em] text-accent">{primary?.partOfSpeech}</p>
+                <p className="text-xs uppercase tracking-[0.16em] text-accent">
+                  {primary ? posLabel(primary.partOfSpeech, t) : ''}
+                </p>
                 <p className="mt-2 text-lg leading-relaxed">{primary?.definition}</p>
                 {primary && (
                   <SenseExtras sense={primary} language={card.language} linked={false} compact />
@@ -213,9 +246,7 @@ export function Review() {
       </div>
 
       <p className="mt-6 text-center text-sm text-muted">
-        {flipped
-          ? 'How well did you remember it? The next review is scheduled from your answer.'
-          : 'Recall the answer, then tap the card or press Space to check.'}
+        {flipped ? t('review.hintAfter') : t('review.hintBefore')}
       </p>
       <div className={`mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 ${flipped ? '' : 'opacity-40'}`}>
         {GRADE_META.map((item) => (
@@ -226,7 +257,7 @@ export function Review() {
             onClick={() => void grade(item.grade)}
             className="rounded-2xl border border-rule bg-paper-2 px-3 py-3 text-sm disabled:cursor-not-allowed"
           >
-            <span className="block font-semibold">{item.label}</span>
+            <span className="block font-semibold">{t(item.label)}</span>
             <span className="text-xs text-muted">
               {item.key} · {hints?.[item.grade] ?? ''}
             </span>

@@ -4,6 +4,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import type { GraphEdge, GraphNode } from '@shared/types'
 import { hashHue } from '../lib/format'
+import { useI18n } from '../context/I18nContext'
 import { useTheme } from '../context/ThemeContext'
 import { keptHref, lookupHref } from '../lib/paths'
 
@@ -187,6 +188,7 @@ export function WordGraph({
 }) {
   const navigate = useNavigate()
   const { resolved: theme } = useTheme()
+  const { t } = useI18n()
   const wrapRef = useRef<HTMLDivElement>(null)
   const hostRef = useRef<HTMLDivElement>(null)
 
@@ -229,7 +231,7 @@ export function WordGraph({
     renderer.domElement.style.height = `${height}px`
     renderer.domElement.style.userSelect = 'none'
     renderer.domElement.style.touchAction = 'none'
-    renderer.domElement.setAttribute('aria-label', '3D word graph')
+    renderer.domElement.setAttribute('aria-label', t('graph.aria'))
     host.replaceChildren(renderer.domElement)
 
     const controls = new OrbitControls(camera, renderer.domElement)
@@ -419,12 +421,12 @@ export function WordGraph({
       renderer.dispose()
       host.replaceChildren()
     }
-  }, [trimmed, height, navigate, onLookup, theme])
+  }, [trimmed, height, navigate, onLookup, theme, t])
 
   if (!nodes.length) {
     return (
       <p className="rounded-2xl border border-dashed border-rule px-4 py-10 text-center text-muted">
-        Keep a word or phrase to see synonyms, antonyms, etymology, translations, and the words a phrase is built from.
+        {t('graph.empty')}
       </p>
     )
   }
@@ -441,46 +443,46 @@ export function WordGraph({
         style={{ height, touchAction: 'none', userSelect: 'none' }}
       />
       <p className="border-t border-rule px-3 py-1.5 text-center text-xs text-muted">
-        Drag to rotate · scroll to zoom · click a node to open
+        {t('graph.hint')}
       </p>
       <div className="flex flex-wrap gap-3 border-t border-rule px-3 py-2 text-xs uppercase tracking-wide text-muted">
         <span className="flex items-center gap-1">
           <i className="inline-block h-2 w-4 rounded-sm" style={{ background: 'var(--wk-saved)' }} />
-          synonym
+          {t('relation.synonym')}
         </span>
         <span className="flex items-center gap-1">
           <i
             className="inline-block h-0.5 w-4"
             style={{ borderTop: '2px dashed var(--wk-accent)' }}
           />
-          antonym
+          {t('relation.antonym')}
         </span>
         <span className="flex items-center gap-1">
           <i className="inline-block h-2 w-4 rounded-sm" style={{ background: 'var(--wk-gold)' }} />
-          translation
+          {t('relation.translation')}
         </span>
         <span className="flex items-center gap-1">
           <i
             className="inline-block h-0.5 w-4"
             style={{ borderTop: '2px dotted var(--wk-related)' }}
           />
-          related
+          {t('relation.related')}
         </span>
         <span className="flex items-center gap-1">
           <i
             className="inline-block h-0.5 w-4"
             style={{ borderTop: '2px dashed var(--wk-etymology)' }}
           />
-          etymology
+          {t('relation.etymology')}
         </span>
         <span className="flex items-center gap-1">
           <i className="inline-block h-2 w-4 rounded-sm" style={{ background: 'var(--wk-phrase)' }} />
-          phrase
+          {t('relation.phrase')}
         </span>
       </div>
       {nodes.length > trimmed.nodes.length && (
         <p className="border-t border-rule px-3 py-2 text-center text-xs text-muted">
-          Showing {trimmed.nodes.length - 1} of {nodes.length - 1} linked words — open Atlas for the rest.
+          {t('graph.showing', { shown: trimmed.nodes.length - 1, total: nodes.length - 1 })}
         </p>
       )}
     </div>

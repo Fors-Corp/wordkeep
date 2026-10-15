@@ -63,6 +63,7 @@ describe('Claude rate limits', () => {
     assert.equal(second.source, 'claude')
     assert.equal(third.source, 'dictionary')
     assert.match(third.note ?? '', /today’s 2 Claude analyses/)
+    assert.deepEqual(third.notice, { code: 'visitor-limit', params: { limit: 2 } })
     assert.equal(calls, 2)
 
     const other = await analyzePhrase('kick the cat', 'en', 'es', { visitor: 'b' })
@@ -75,6 +76,7 @@ describe('Claude rate limits', () => {
     const blocked = await analyzePhrase('the bucket', 'en', 'es', { visitor: 'b' })
     assert.equal(blocked.source, 'dictionary')
     assert.match(blocked.note ?? '', /budget for today is used up/)
+    assert.deepEqual(blocked.notice, { code: 'total-limit' })
   })
 
   it('serves repeat phrases from the shared cache without spending allowance', async () => {
@@ -101,6 +103,7 @@ describe('Claude rate limits', () => {
     const result = await analyzePhrase('the cat', 'en', 'es', { visitor: 'a' })
     assert.equal(result.source, 'dictionary')
     assert.match(result.note ?? '', /Upstash Redis/)
+    assert.deepEqual(result.notice, { code: 'needs-redis' })
     assert.equal(calls, 0)
   })
 

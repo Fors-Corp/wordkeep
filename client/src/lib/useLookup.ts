@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { EntryKind, LookupResult, PhraseAnalysis } from '@shared/types'
 import { looksLikePhrase } from '@shared/phrase'
+import { useI18n } from '../context/I18nContext'
 import { useLanguage } from '../context/LanguageContext'
 import { api } from './api'
-import { explainLanguage } from './format'
 
 export type LookupMode = 'auto' | EntryKind
 
@@ -19,6 +19,7 @@ export function kindFor(text: string, mode: LookupMode, lang: string): EntryKind
 
 export function useLookup() {
   const { lookupLang, setLookupLang } = useLanguage()
+  const { explainFor } = useI18n()
   const [params, setParams] = useSearchParams()
   const urlQ = params.get('q') ?? ''
   const urlLang = params.get('lang') ?? ''
@@ -29,7 +30,7 @@ export function useLookup() {
   const [phrase, setPhrase] = useState<PhraseAnalysis | null>(null)
   const [busy, setBusy] = useState(false)
   const [notFound, setNotFound] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState<Error | null>(null)
   const seq = useRef(0)
   const typing = useRef(false)
 
@@ -96,6 +97,8 @@ export function useLookup() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, lookupLang, mode])
 
+  const explain = explainFor(urlLang || lookupLang)
+
   useEffect(() => {
     const q = urlQ.trim()
     const lang = urlLang || lookupLang
@@ -104,16 +107,16 @@ export function useLookup() {
       setLookup(null)
       setPhrase(null)
       setNotFound(false)
-      setError('')
+      setError(null)
       setBusy(false)
       return
     }
     const n = ++seq.current
     setBusy(true)
     setNotFound(false)
-    setError('')
+    setError(null)
     const request: Promise<LookupResult | PhraseAnalysis> =
-      urlKind === 'phrase' ? api.analyzePhrase(q, lang, explainLanguage()) : api.lookup(q, lang)
+      urlKind === 'phrase' ? api.analyzePhrase(q, lang, explain) : api.lookup(q, lang)
     request
       .then((result) => {
         if (n !== seq.current) return
@@ -131,12 +134,12 @@ export function useLookup() {
         setLookup(null)
         setPhrase(null)
         setNotFound(true)
-        setError(err.message || `No dictionary entry for “${q}”.`)
+        setError(err)
       })
       .finally(() => {
         if (n === seq.current) setBusy(false)
       })
-  }, [urlQ, urlLang, urlMode, lookupLang])
+  }, [urlQ, urlLang, urlMode, lookupLang, explain])
 
   return {
     query,

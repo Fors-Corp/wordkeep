@@ -1,5 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
+import { useI18n } from '../context/I18nContext'
 import { useStats } from '../context/StatsContext'
+import { AppLanguageMenu } from './AppLanguageMenu'
 import { LanguageSwitcher } from './LanguageSwitcher'
 import { ThemeSwitcher } from './ThemeSwitcher'
 import { WordTrailBar } from './WordTrailBar'
@@ -13,6 +15,7 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
 
 export function Layout() {
   const { stats } = useStats()
+  const { t } = useI18n()
   const due = stats?.dueToday ?? 0
 
   return (
@@ -23,23 +26,25 @@ export function Layout() {
         </NavLink>
         <nav className="flex flex-wrap items-center gap-1">
           <NavLink to="/" end className={linkClass}>
-            Introduce
+            {t('nav.introduce')}
           </NavLink>
           <NavLink to="/words" className={linkClass}>
-            Lexicon
+            {t('nav.lexicon')}
           </NavLink>
           <NavLink to="/review" className={linkClass}>
-            Review{due > 0 ? ` ${due}` : ''}
+            {t('nav.review')}
+            {due > 0 ? ` ${due}` : ''}
           </NavLink>
           <NavLink to="/graph" className={linkClass}>
-            Atlas
+            {t('nav.atlas')}
           </NavLink>
           <NavLink to="/discover" className={linkClass}>
-            Discover
+            {t('nav.discover')}
           </NavLink>
         </nav>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <ThemeSwitcher />
+          <AppLanguageMenu />
           <LanguageSwitcher />
         </div>
       </header>
@@ -52,7 +57,7 @@ export function Layout() {
           rel="noopener noreferrer"
           className="hover:text-ink"
         >
-          Support · 1,99 €
+          {t('nav.support')}
         </a>
       </footer>
     </div>

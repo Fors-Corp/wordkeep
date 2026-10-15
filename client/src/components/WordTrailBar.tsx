@@ -1,9 +1,11 @@
 import { useEffect } from 'react'
 import { isRtl, trailModifierLabel, trailModifierPressed } from '../lib/format'
+import { useI18n } from '../context/I18nContext'
 import { useWordTrail } from '../context/WordTrailContext'
 
 export function WordTrailBar() {
   const { trail, index, canBack, canForward, back, forward, jump } = useWordTrail()
+  const { t } = useI18n()
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -32,18 +34,18 @@ export function WordTrailBar() {
         onClick={back}
         disabled={!canBack}
         className="rounded-full px-3 py-1 text-sm disabled:opacity-30"
-        aria-label="Previous word"
+        aria-label={t('trail.previous')}
       >
-        ← Back
+        {t('trail.back')}
       </button>
       <button
         type="button"
         onClick={forward}
         disabled={!canForward}
         className="rounded-full px-3 py-1 text-sm disabled:opacity-30"
-        aria-label="Next word"
+        aria-label={t('trail.next')}
       >
-        Forward →
+        {t('trail.forward')}
       </button>
       <ol className="flex min-w-0 flex-1 flex-wrap items-center gap-1 overflow-hidden">
         {trail.map((stop, i) => (

@@ -43,7 +43,9 @@ describe('phrase API', () => {
 
   it('GET /api/phrase/analyze validates input and returns a breakdown', async () => {
     assert.equal((await app.request('/api/phrase/analyze')).status, 400)
-    assert.equal((await app.request('/api/phrase/analyze?q=...')).status, 400)
+    const empty = await app.request('/api/phrase/analyze?q=...')
+    assert.equal(empty.status, 400)
+    assert.equal(((await empty.json()) as { code: string }).code, 'phrase-empty')
 
     const res = await app.request('/api/phrase/analyze?q=The%20cat%20sat.&lang=en')
     assert.equal(res.status, 200)

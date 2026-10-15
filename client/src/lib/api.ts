@@ -12,18 +12,36 @@ import type {
   WordSummary,
 } from '@shared/types'
 
+/** A failed API call, with the server's machine-readable code when it sent one. */
+export class ApiError extends Error {
+  readonly status: number
+  readonly code?: string
+  readonly params: Record<string, string | number>
+
+  constructor(message: string, status: number, code?: string, params: Record<string, string | number> = {}) {
+    super(message)
+    this.status = status
+    this.code = code
+    this.params = params
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
     ...init,
   })
-  const data = (await res.json().catch(() => ({}))) as T & { error?: string }
+  const data = (await res.json().catch(() => ({}))) as T & {
+    error?: string
+    code?: string
+    params?: Record<string, string | number>
+  }
   if (res.status === 401 && path !== '/api/login' && path !== '/api/session') {
     window.dispatchEvent(new Event('wordkeep:auth'))
   }
   if (!res.ok) {
-    throw new Error(data.error || `Request failed (${res.status})`)
+    throw new ApiError(data.error || `Request failed (${res.status})`, res.status, data.code, data.params)
   }
   return data
 }

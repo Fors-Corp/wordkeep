@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useI18n } from '../context/I18nContext'
 import { useLanguage } from '../context/LanguageContext'
 import { languageLine, nativeLanguageName } from '../lib/format'
 
 export function LanguageSwitcher() {
   const { languages, lookupLang, setLookupLang, current } = useLanguage()
+  const { t, languageName } = useI18n()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
@@ -47,27 +49,32 @@ export function LanguageSwitcher() {
         className="flex max-w-56 items-center gap-2 rounded-full border border-rule bg-paper-2 px-3 py-1.5 text-left text-sm text-ink"
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-label={`${t('dictLang.label')}: ${current ? languageName(current.code, current.name) : lookupLang}`}
+        title={t('dictLang.label')}
       >
         <span className="font-mono text-xs uppercase tracking-wide text-gold">
           {lookupLang}
         </span>
-        <span className="truncate">{current?.name ?? 'Language'}</span>
+        <span className="truncate">
+          {current ? languageName(current.code, current.name) : t('dictLang.fallback')}
+        </span>
         <span className="ml-auto text-muted">▾</span>
       </button>
       {open && (
-        <div className="absolute right-0 z-30 mt-2 w-80 overflow-hidden rounded-2xl border border-rule bg-paper shadow-xl">
+        <div className="absolute right-0 z-30 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-rule bg-paper shadow-xl">
           <div className="border-b border-rule p-2">
+            <p className="px-1 pb-2 text-xs uppercase tracking-[0.18em] text-gold">{t('dictLang.label')}</p>
             <input
               ref={inputRef}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder={`Search ${languages.length} languages`}
+              placeholder={t('dictLang.search', { count: languages.length })}
               className="w-full rounded-xl border border-rule bg-paper-2 px-3 py-2 text-sm outline-none focus:border-accent"
             />
           </div>
           <ul className="max-h-80 overflow-y-auto py-1" role="listbox">
             {filtered.length === 0 && (
-              <li className="px-3 py-3 text-sm text-muted">No language matches.</li>
+              <li className="px-3 py-3 text-sm text-muted">{t('dictLang.none')}</li>
             )}
             {filtered.map((item) => {
               const active = item.code === lookupLang

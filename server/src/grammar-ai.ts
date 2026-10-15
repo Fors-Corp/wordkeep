@@ -51,14 +51,14 @@ Return a grammatical analysis in the requested JSON format:
 - tokens: one entry for every numbered word you are given, using the same index. lemma is the dictionary form. partOfSpeech uses lowercase English terms (noun, proper noun, verb, auxiliary, adjective, adverb, pronoun, determiner, article, preposition, postposition, conjunction, particle, numeral, interjection). role is the word's syntactic function in this phrase (subject, predicate, direct object, indirect object, complement, modifier, and so on). features lists its inflection (tense, person, number, case, gender, mood, aspect, degree); leave it empty for uninflected words. explanation is one short sentence on what the word does here.
 - translation: a natural translation into the explanation language. If the phrase is already in that language, give a plain paraphrase.
 - summary: one to three sentences on how the phrase is built.
-- sentenceType: declarative, interrogative, imperative, exclamatory, or fragment.
+- sentenceType: declarative, interrogative, imperative, exclamatory, or fragment, named in the explanation language.
 - tense, mood, voice: for the main verb; empty strings when there is no finite verb.
 - clauses: each clause with its type (main, relative, subordinate, and so on). Empty for a fragment without a verb.
 - idioms: fixed expressions, idioms, phrasal verbs, or collocations whose meaning is not literal.
 - questions: three to five short quiz questions about the grammar of this exact phrase, each with a concise answer.
 - clozeIndexes: one to four token indexes most worth recalling (key verbs, idioms, tricky inflections). Never punctuation.
 
-The dictionary hints come from an automatic lookup and can be wrong or ambiguous; correct them. Write every explanation, summary, translation, clause note, idiom meaning, question, and answer in the explanation language. Keep grammatical terms short.`
+The dictionary hints come from an automatic lookup and can be wrong or ambiguous; correct them. Keep partOfSpeech in lowercase English from the list above. Write everything else in the explanation language: roles, features, sentence type, tense, mood, voice, clause types and notes, the summary, the translation, idiom meanings, questions, and answers. Keep grammatical terms short.`
 
 let override: Analyzer | null = null
 let client: Anthropic | null = null

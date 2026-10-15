@@ -187,6 +187,29 @@ export type PhraseIdiom = {
 export type GrammarQuestion = {
   question: string
   answer: string
+  /** Set on dictionary-made questions so the app can word them in its own language. */
+  template?: {
+    kind: 'form' | 'pos'
+    text: string
+    lemma: string
+    partOfSpeech: string
+    features: string[]
+  }
+}
+
+export type PhraseNoticeCode =
+  | 'dictionary-only'
+  | 'visitor-limit'
+  | 'total-limit'
+  | 'needs-redis'
+  | 'store-unreachable'
+  | 'claude-failed'
+  | 'demo'
+
+/** Why an analysis looks the way it does, as a code the app translates. */
+export type PhraseNotice = {
+  code: PhraseNoticeCode
+  params?: Record<string, string | number>
 }
 
 export type PhraseAnalysis = {
@@ -206,6 +229,7 @@ export type PhraseAnalysis = {
   questions: GrammarQuestion[]
   clozeIndexes: number[]
   note: string | null
+  notice?: PhraseNotice | null
   existing: { id: string } | null
 }
 

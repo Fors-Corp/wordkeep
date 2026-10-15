@@ -1,4 +1,6 @@
 import type { SenseDraft } from '@shared/types'
+import { useI18n } from '../context/I18nContext'
+import { posLabel } from '../lib/format'
 import { groupByPos } from '../lib/senses'
 import { SenseExtras } from './SenseExtras'
 
@@ -17,11 +19,12 @@ export function SenseList({
   primaryIndex?: number
   onPick?: (index: number, sense: Item) => void
 }) {
+  const { t } = useI18n()
   return (
     <div className="space-y-4">
       {groupByPos(senses).map(([pos, group]) => (
         <section key={pos}>
-          <h3 className="mb-2 text-xs uppercase tracking-[0.16em] text-accent">{pos}</h3>
+          <h3 className="mb-2 text-xs uppercase tracking-[0.16em] text-accent">{posLabel(pos, t)}</h3>
           <ul className="space-y-2">
             {group.map((sense) => {
               const index = senses.indexOf(sense)
@@ -48,7 +51,7 @@ export function SenseList({
                     )}
                     {selected && (
                       <span className="shrink-0 text-xs uppercase tracking-wide text-gold">
-                        card face
+                        {t('sense.cardFace')}
                       </span>
                     )}
                   </div>
@@ -59,7 +62,7 @@ export function SenseList({
                       className="mt-2 text-xs text-accent underline"
                       onClick={() => onPick(index, sense)}
                     >
-                      Use on review card
+                      {t('sense.useOnCard')}
                     </button>
                   )}
                 </li>

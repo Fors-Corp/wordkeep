@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto'
 import type { Context } from 'hono'
+import type { PhraseNotice } from '../../shared/types.ts'
 import { getStore } from './kv.ts'
 
 const DAY_TTL = 2 * 24 * 60 * 60
 
 export type AiAllowance =
   | { ok: true }
-  | { ok: false; reason: 'visitor' | 'total' | 'unavailable'; message: string }
+  | { ok: false; reason: 'visitor' | 'total' | 'unavailable'; message: string; notice: PhraseNotice }
 
 function limit(name: string, fallback: number): number {
   const raw = Number(process.env[name])
@@ -53,6 +54,7 @@ export async function takeAiAllowance(visitor: string): Promise<AiAllowance> {
       ok: false,
       reason: 'unavailable',
       message: 'Claude analysis needs a shared rate-limit store (Upstash Redis) on this deploy.',
+      notice: { code: 'needs-redis' },
     }
   }
   try {
@@ -64,6 +66,7 @@ export async function takeAiAllowance(visitor: string): Promise<AiAllowance> {
         ok: false,
         reason: 'visitor',
         message: `You have used today’s ${perVisitor} Claude analyses. More tomorrow.`,
+        notice: { code: 'visitor-limit', params: { limit: perVisitor } },
       }
     }
     const all = await store.incr(`wk:ai:total:${day}`, DAY_TTL)
@@ -72,11 +75,17 @@ export async function takeAiAllowance(visitor: string): Promise<AiAllowance> {
         ok: false,
         reason: 'total',
         message: 'Wordkeep’s Claude budget for today is used up. More tomorrow.',
+        notice: { code: 'total-limit' },
       }
     }
     return { ok: true }
   } catch {
-    return { ok: false, reason: 'unavailable', message: 'The rate-limit store is unreachable.' }
+    return {
+      ok: false,
+      reason: 'unavailable',
+      message: 'The rate-limit store is unreachable.',
+      notice: { code: 'store-unreachable' },
+    }
   }
 }
 
