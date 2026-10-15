@@ -199,11 +199,17 @@ async function lookupOnce(rawWord: string, lang: string): Promise<LookupResult |
   }
 
   const guessedName = languageName(lang)
-  const [payload, wiki, native] = await Promise.all([
-    fetchFreeDictionary(displayLemma, lang),
+  const [free, wiki, native] = await Promise.all([
+    fetchFreeDictionary(displayLemma, lang).then(
+      (payload) => ({ payload, error: null }),
+      (error: unknown) => ({ payload: null, error }),
+    ),
     fetchWikiExtras(displayLemma, guessedName, lang),
     fetchNativeWiki(displayLemma, lang),
   ])
+  // Without the main dictionary, native Wiktionary senses still make an entry.
+  if (free.error && !native.senses.length) throw free.error
+  const payload = free.payload
 
   const entries = (payload?.entries ?? []).filter((entry) => {
     const code = entry.language?.code
@@ -229,7 +235,7 @@ async function lookupOnce(rawWord: string, lang: string): Promise<LookupResult |
     existing: null,
   }
 
-  cacheSet(cacheKey, result)
+  if (!free.error) cacheSet(cacheKey, result)
   return result
 }
 

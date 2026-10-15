@@ -1,4 +1,4 @@
-FROM node:24-bookworm-slim
+FROM node:22-bookworm-slim
 
 WORKDIR /app
 
@@ -17,4 +17,5 @@ ENV WORDKEEP_DB=/data/wordkeep.db
 ENV CLIENT_DIST=/app/client/dist
 
 EXPOSE 3001
-CMD ["npm", "run", "start", "-w", "server"]
+# node directly (not npm) so it receives SIGTERM and shuts down cleanly.
+CMD ["node", "--import", "tsx", "server/src/index.ts"]

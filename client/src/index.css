@@ -102,6 +102,8 @@
 
   body {
     margin: 0;
+    /* Keep content clear of the notch and home indicator in the Home Screen app. */
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
     background-color: var(--wk-paper);
     color: var(--wk-ink);
     font-family: var(--font-sans);

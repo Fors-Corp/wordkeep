@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { useI18n } from '../context/I18nContext'
 import { api } from '../lib/api'
+import { errorText } from '../lib/errors'
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const [locked, setLocked] = useState(false)
@@ -36,7 +37,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       setSignedIn(true)
       window.location.reload()
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('auth.failed'))
+      setError(errorText(err, t, t('auth.failed')))
     }
   }
 
@@ -53,7 +54,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
               type="password"
               value={key}
               onChange={(event) => setKey(event.target.value)}
-              className="mt-1 w-full rounded-xl border border-rule bg-paper px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-rule bg-paper px-3 py-2 text-base sm:text-sm"
               autoFocus
             />
           </label>

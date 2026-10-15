@@ -1,7 +1,7 @@
 {
   "name": "wordkeep",
   "private": true,
-  "version": "2.0.0",
+  "version": "2.1.0",
   "type": "module",
   "license": "MIT",
   "engines": {
@@ -35,7 +35,6 @@
     "fsevents@2.3.3": true
   },
   "dependencies": {
-    "@hono/node-server": "^2.1.1",
-    "hono": "^4.13.5"
+    "hono": "^4.13.13"
   }
 }

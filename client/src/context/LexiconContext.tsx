@@ -23,6 +23,8 @@ type LexiconContextValue = {
   stats: Stats | null
   recent: WordSummary[]
   sync: SyncState
+  /** Set when the last write to the device failed (storage full or blocked). */
+  storageError: unknown
 }
 
 const EMPTY = new Lexicon([])
@@ -39,29 +41,38 @@ export function LexiconProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let cancelled = false
+    let opened: DeviceLexicon | null = null
     void (async () => {
       const store = await openDeviceStore()
-      const opened = await DeviceLexicon.open(store, { sync: api.sync, legacy: api.legacyExport })
-      if (cancelled) return
+      opened = await DeviceLexicon.open(store, {
+        sync: api.sync,
+        legacy: api.legacyExport,
+        legacyAck: api.legacyAck,
+      })
+      if (cancelled) {
+        opened.close()
+        return
+      }
       setDevice(opened)
       requestPersistence()
       void opened.syncNow()
     })()
     return () => {
       cancelled = true
+      opened?.close()
     }
   }, [])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
       setNow(Date.now())
-      void device?.syncNow()
+      void device?.syncNow({ auto: true })
     }, SYNC_EVERY)
     if (!device) return () => window.clearInterval(timer)
     const wake = () => {
       if (document.visibilityState === 'visible') {
         setNow(Date.now())
-        void device.syncNow()
+        void device.syncNow({ auto: true })
       }
     }
     document.addEventListener('visibilitychange', wake)
@@ -82,6 +93,15 @@ export function LexiconProvider({ children }: { children: ReactNode }) {
     () => device?.sync ?? OFF,
   )
 
+  const storageError = useSyncExternalStore(
+    device?.subscribe ?? noopSubscribe,
+    () => device?.storageError ?? null,
+  )
+
+  // Worked out again only when the records (or the minute) change, not on sync status.
+  const stats = useMemo(() => (device ? lexicon.stats(now) : null), [device, lexicon, now])
+  const recent = useMemo(() => lexicon.recent(), [lexicon])
+
   const value = useMemo<LexiconContextValue>(
     () => ({
       device,
@@ -89,11 +109,12 @@ export function LexiconProvider({ children }: { children: ReactNode }) {
       ready: Boolean(device),
       persistent: device?.persistent ?? true,
       now,
-      stats: device ? lexicon.stats(now) : null,
-      recent: lexicon.recent(),
+      stats,
+      recent,
       sync,
+      storageError,
     }),
-    [device, lexicon, now, sync],
+    [device, lexicon, now, stats, recent, sync, storageError],
   )
   return <LexiconContext.Provider value={value}>{children}</LexiconContext.Provider>
 }

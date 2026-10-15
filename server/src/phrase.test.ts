@@ -158,7 +158,8 @@ describe('phrase analysis', () => {
       const result = await analyzePhrase('the cat', 'en')
       assert.equal(result.source, 'dictionary')
       assert.match(result.note ?? '', /overloaded/)
-      assert.deepEqual(result.notice, { code: 'claude-failed', params: { message: 'overloaded' } })
+      assert.deepEqual(result.notice, { code: 'claude-failed' })
+      assert.match(result.note ?? '', /overloaded/)
     } finally {
       mock.restore()
     }

@@ -20,7 +20,7 @@ export function languageLine(code: string, name: string, locale = 'en'): string 
   return native === name ? `${name} · ${code}` : `${native} · ${name}`
 }
 
-export function formatDue(ts: number, now = Date.now(), t: Translate = english.t): string {
+export function formatDue(ts: number, now = Date.now(), t: Translate = english.t, locale?: string): string {
   const delta = ts - now
   if (delta <= 0) return t('due.now')
   const minutes = Math.round(delta / 60_000)
@@ -29,7 +29,7 @@ export function formatDue(ts: number, now = Date.now(), t: Translate = english.t
   if (hours < 36) return t('due.hours', { count: hours })
   const days = Math.round(hours / 24)
   if (days < 60) return t('due.days', { count: days })
-  return new Date(ts).toLocaleDateString()
+  return new Date(ts).toLocaleDateString(locale)
 }
 
 const STATUSES = ['new', 'learning', 'review', 'mastered'] as const

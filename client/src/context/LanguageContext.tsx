@@ -23,7 +23,12 @@ const STORAGE_KEY = 'wordkeep.lookupLang'
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [languages, setLanguages] = useState<Language[]>([])
   const [lookupLang, setLookupLangState] = useState(() => {
-    const stored = localStorage.getItem(STORAGE_KEY)
+    let stored: string | null = null
+    try {
+      stored = localStorage.getItem(STORAGE_KEY)
+    } catch {
+      /* storage blocked: fall back to the browser language */
+    }
     if (stored) return stored
     const nav = (navigator.language || 'en').split('-')[0] || 'en'
     return nav
@@ -52,7 +57,11 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   const setLookupLang = (code: string) => {
     setLookupLangState(code)
-    localStorage.setItem(STORAGE_KEY, code)
+    try {
+      localStorage.setItem(STORAGE_KEY, code)
+    } catch {
+      /* private mode: the choice lasts for this visit */
+    }
   }
 
   const current = useMemo(

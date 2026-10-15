@@ -11,20 +11,24 @@ export function LanguageSwitcher() {
   const [query, setQuery] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     if (!open) return
     inputRef.current?.focus()
-    const onDoc = (event: MouseEvent) => {
+    // pointerdown, not mousedown: iOS Safari fires no mouse events for taps on plain areas.
+    const onDoc = (event: PointerEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
     }
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false)
+      if (event.key !== 'Escape') return
+      setOpen(false)
+      buttonRef.current?.focus()
     }
-    document.addEventListener('mousedown', onDoc)
+    document.addEventListener('pointerdown', onDoc)
     document.addEventListener('keydown', onKey)
     return () => {
-      document.removeEventListener('mousedown', onDoc)
+      document.removeEventListener('pointerdown', onDoc)
       document.removeEventListener('keydown', onKey)
     }
   }, [open])
@@ -45,6 +49,7 @@ export function LanguageSwitcher() {
   return (
     <div ref={rootRef} className="relative">
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen((value) => !value)}
         className="flex max-w-56 items-center gap-2 rounded-full border border-rule bg-paper-2 px-3 py-1.5 text-left text-sm text-ink"
@@ -62,7 +67,7 @@ export function LanguageSwitcher() {
         <span className="ml-auto text-muted">▾</span>
       </button>
       {open && (
-        <div className="absolute right-0 z-30 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-rule bg-paper shadow-xl">
+        <div className="absolute left-0 z-30 mt-2 sm:left-auto sm:right-0 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-rule bg-paper shadow-xl">
           <div className="border-b border-rule p-2">
             <p className="px-1 pb-2 text-xs uppercase tracking-[0.18em] text-gold">{t('dictLang.label')}</p>
             <input
@@ -70,7 +75,8 @@ export function LanguageSwitcher() {
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={t('dictLang.search', { count: languages.length })}
-              className="w-full rounded-xl border border-rule bg-paper-2 px-3 py-2 text-sm outline-none focus:border-accent"
+              aria-label={t('dictLang.label')}
+              className="w-full rounded-xl border border-rule bg-paper-2 px-3 py-2 text-base outline-none focus:border-accent sm:text-sm"
             />
           </div>
           <ul className="max-h-80 overflow-y-auto py-1" role="listbox">
@@ -86,10 +92,13 @@ export function LanguageSwitcher() {
                     className={`flex w-full items-baseline justify-between px-3 py-2 text-left text-sm ${
                       active ? 'bg-chip text-accent' : 'hover:bg-paper-2'
                     }`}
+                    role="option"
+                    aria-selected={active}
                     onClick={() => {
                       setLookupLang(item.code)
                       setOpen(false)
                       setQuery('')
+                      buttonRef.current?.focus()
                     }}
                   >
                     <span>
@@ -103,7 +112,7 @@ export function LanguageSwitcher() {
                       </span>
                     </span>
                     <span className="font-mono text-xs text-muted">
-                      {item.words > 0 ? item.words.toLocaleString() : item.code}
+                      {item.words > 0 ? item.words.toLocaleString(locale) : item.code}
                     </span>
                   </button>
                 </li>

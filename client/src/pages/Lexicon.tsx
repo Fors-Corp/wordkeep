@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import type { ListOptions } from '@shared/lexicon'
 import { SampleButton } from '../components/SampleButton'
@@ -6,7 +6,7 @@ import { SyncPanel } from '../components/SyncPanel'
 import { useI18n } from '../context/I18nContext'
 import { useLanguage } from '../context/LanguageContext'
 import { useLexicon } from '../context/LexiconContext'
-import { capitalize, type MessageKey } from '../i18n'
+import { capitalize, intlLocale, type MessageKey } from '../i18n'
 import { formatDue, isRtl, statusLabel } from '../lib/format'
 
 const FILTERS = ['all', 'due', 'new', 'learning', 'review', 'mastered', 'archived'] as const
@@ -34,6 +34,9 @@ export function Lexicon() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [importing, setImporting] = useState(false)
+  // A chosen backup file waiting for "add" or "replace".
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
   const q = params.get('q') ?? ''
   const status = params.get('status') ?? 'all'
   const language = params.get('language') ?? ''
@@ -56,14 +59,16 @@ export function Lexicon() {
       link.href = href
       link.download = `wordkeep-${new Date().toISOString().slice(0, 10)}.json`
       link.click()
-      URL.revokeObjectURL(href)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('lexicon.exportFailed'))
+      // Safari (above all as a Home Screen app) starts the download later; keep the file around.
+      window.setTimeout(() => URL.revokeObjectURL(href), 60_000)
+    } catch {
+      setError(t('lexicon.exportFailed'))
     }
   }
 
   async function uploadBackup(file: File, mode: 'merge' | 'replace') {
     if (!device) return
+    setPendingFile(null)
     setImporting(true)
     setError('')
     setMessage('')
@@ -83,7 +88,8 @@ export function Lexicon() {
       if (value) merged.set(key, value)
       else merged.delete(key)
     }
-    setParams(merged)
+    // Typing in the search box updates the address without piling up history.
+    setParams(merged, { replace: 'q' in next })
   }
 
   const usedLangs = [...new Set(words.map((word) => word.language))]
@@ -97,10 +103,12 @@ export function Lexicon() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <input
+            type="search"
             value={q}
             onChange={(event) => update({ q: event.target.value })}
             placeholder={t('lexicon.search')}
-            className="w-full max-w-xs rounded-full border border-rule bg-paper px-4 py-2 text-sm outline-none"
+            aria-label={t('lexicon.search')}
+            className="w-full max-w-xs rounded-full border border-rule bg-paper px-4 py-2 text-base outline-none sm:text-sm"
           />
           <button
             type="button"
@@ -110,24 +118,55 @@ export function Lexicon() {
           >
             {t('lexicon.export')}
           </button>
-          <label className="cursor-pointer rounded-full border border-rule px-3 py-1.5 text-sm">
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={!ready || importing}
+            className="rounded-full border border-rule px-3 py-1.5 text-sm"
+          >
             {importing ? t('lexicon.importing') : t('lexicon.import')}
-            <input
-              type="file"
-              accept="application/json,.json"
-              className="hidden"
-              disabled={!ready || importing}
-              onChange={(event) => {
-                const file = event.target.files?.[0]
-                event.target.value = ''
-                if (!file) return
-                const replace = window.confirm(t('lexicon.replaceConfirm'))
-                void uploadBackup(file, replace ? 'replace' : 'merge')
-              }}
-            />
-          </label>
+          </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            tabIndex={-1}
+            aria-hidden="true"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              event.target.value = ''
+              if (file) setPendingFile(file)
+            }}
+          />
         </div>
       </div>
+
+      {pendingFile && (
+        <div className="mb-6 rounded-2xl border border-rule bg-paper-2 p-4" role="group" aria-label={t('lexicon.import')}>
+          <p className="text-sm">{t('lexicon.importChoice', { file: pendingFile.name })}</p>
+          <p className="mt-1 text-xs text-muted">{t('lexicon.importReplaceHint')}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void uploadBackup(pendingFile, 'merge')}
+              className="rounded-full bg-ink px-4 py-2 text-sm text-paper"
+            >
+              {t('lexicon.importMerge')}
+            </button>
+            <button
+              type="button"
+              onClick={() => void uploadBackup(pendingFile, 'replace')}
+              className="rounded-full border border-accent px-4 py-2 text-sm text-accent"
+            >
+              {t('lexicon.importReplace')}
+            </button>
+            <button type="button" onClick={() => setPendingFile(null)} className="rounded-full px-4 py-2 text-sm">
+              {t('common.cancel')}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="mb-4 flex flex-wrap gap-2">
         {FILTERS.map((item) => (
@@ -217,7 +256,7 @@ export function Lexicon() {
               >
                 <span
                   className={`lemma min-w-32 ${word.kind === 'phrase' ? 'text-xl' : 'text-2xl'}`}
-                  dir={isRtl(word.language) ? 'rtl' : 'ltr'}
+                  lang={word.language} dir={isRtl(word.language) ? 'rtl' : 'ltr'}
                 >
                   {word.displayLemma}
                 </span>
@@ -229,7 +268,7 @@ export function Lexicon() {
                 <span className="min-w-48 flex-1 text-sm text-muted line-clamp-2 sm:line-clamp-1">{word.gloss}</span>
                 <span className="font-mono text-xs uppercase text-gold">{word.language}</span>
                 <span className="text-xs text-muted">{statusLabel(word.status, t)}</span>
-                <span className="text-xs text-accent">{formatDue(word.dueAt, undefined, t)}</span>
+                <span className="text-xs text-accent">{formatDue(word.dueAt, undefined, t, intlLocale(locale))}</span>
               </Link>
             </li>
           ))}

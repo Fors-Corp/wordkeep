@@ -94,7 +94,7 @@ export function phraseEntry(overrides: Partial<StoredEntry> = {}, analysis = phr
 /** Puts records on the (fake) device before the app opens. */
 export async function seedDevice(entries: StoredEntry[]) {
   const store = await openDeviceStore()
-  await store.putEntries(entries)
+  await store.writeLocal(entries)
   await store.setMeta('legacyChecked', true)
 }
 

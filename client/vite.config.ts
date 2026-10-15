@@ -7,6 +7,10 @@ const root = import.meta.dirname
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    // three.js (the atlas) is one lazily loaded chunk of about 560 kB; everything else is far smaller.
+    chunkSizeWarningLimit: 600,
+  },
   resolve: {
     alias: {
       '@shared': path.resolve(root, '../shared'),

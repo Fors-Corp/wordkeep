@@ -35,17 +35,23 @@ const FALLBACK: Language[] = [
 
 let cache: Language[] = FALLBACK
 let fetchedAt = 0
+// After a failed fetch, serve what we have for a while instead of retrying on every call.
+let retryAt = 0
 
 export async function getLanguages(force = false): Promise<Language[]> {
   const fresh = Date.now() - fetchedAt < 24 * 60 * 60 * 1000
   if (!force && fetchedAt && fresh && cache.length > FALLBACK.length) return cache
+  if (!force && Date.now() < retryAt) return cache
 
   try {
     const res = await fetch('https://freedictionaryapi.com/api/v1/languages', {
       headers: { Accept: 'application/json', 'User-Agent': 'Wordkeep/1.0' },
       signal: AbortSignal.timeout(12000),
     })
-    if (!res.ok) return cache
+    if (!res.ok) {
+      retryAt = Date.now() + 10 * 60 * 1000
+      return cache
+    }
     const data = (await res.json()) as Language[]
     if (Array.isArray(data) && data.length > 0) {
       cache = data
@@ -55,6 +61,7 @@ export async function getLanguages(force = false): Promise<Language[]> {
     }
   } catch {
     // keep fallback / last cache
+    retryAt = Date.now() + 10 * 60 * 1000
   }
   return cache
 }

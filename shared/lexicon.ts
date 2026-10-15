@@ -3,11 +3,13 @@ import { applyGrade, initialRecall } from './sm2.ts'
 import type {
   EntryKind,
   Grade,
+  GrammarQuestion,
   GraphNode,
   GraphPayload,
   LinkRelation,
   LookupResult,
   PhraseAnalysis,
+  PhraseNotice,
   RecallStatus,
   Sense,
   Stats,
@@ -77,8 +79,25 @@ function keyOf(lemma: string, language: string): string {
   return `${language}:${normalizeLemma(lemma, language)}`
 }
 
-export function newId(): string {
-  return globalThis.crypto.randomUUID()
+/** A short hash that is the same on every device and every run. */
+export function stableHash(...parts: string[]): string {
+  let a = 0x811c9dc5
+  let b = 0x01000193
+  for (const char of parts.join('\u0000')) {
+    const code = char.codePointAt(0) ?? 0
+    a = Math.imul(a ^ code, 0x01000193) >>> 0
+    b = Math.imul(b ^ code, 0x5bd1e995) >>> 0
+  }
+  return `${a.toString(16).padStart(8, '0')}${b.toString(16).padStart(8, '0')}`
+}
+
+/**
+ * The id of the entry for a word or phrase. It depends only on the language
+ * and the normalized text, so the same word kept on two devices (or loaded
+ * from the samples) becomes one record when they sync, not two.
+ */
+export function entryId(language: string, lemma: string): string {
+  return `e-${stableHash(language, normalizeLemma(lemma, language))}`
 }
 
 function uniqueLinks(links: StoredLink[]): StoredLink[] {
@@ -98,7 +117,7 @@ export function entryFromLookup(
   options: { note?: string; primarySenseIndex?: number; now?: number; id?: string } = {},
 ): StoredEntry {
   const now = options.now ?? Date.now()
-  const id = options.id ?? newId()
+  const id = options.id ?? entryId(lookup.language, lookup.displayLemma)
   const senses: Sense[] = lookup.senses.map((sense, index) => ({
     ...sense,
     id: `${id}-s${index}`,
@@ -192,8 +211,8 @@ export function entryFromPhrase(
   options: { note?: string; now?: number; id?: string } = {},
 ): StoredEntry {
   const now = options.now ?? Date.now()
-  const id = options.id ?? newId()
   const display = analysis.text.trim()
+  const id = options.id ?? entryId(analysis.language, display)
   const sense = phraseSense(id, analysis, gloss)
   return {
     id,
@@ -279,11 +298,15 @@ export type ListOptions = {
   archived?: boolean
 }
 
+const collator = new Intl.Collator(undefined, { sensitivity: 'base' })
+
 /** Read-only view over the device's records: lists, details, review, stats, and the atlas. */
 export class Lexicon {
   private readonly active: StoredEntry[]
   private readonly byId = new Map<string, StoredEntry>()
   private readonly byKey = new Map<string, string>()
+  /** Who links to a word: target key → the records whose links name it. */
+  private readonly linkedFrom = new Map<string, Array<{ from: StoredEntry; relation: LinkRelation }>>()
 
   constructor(entries: Iterable<StoredEntry>) {
     this.active = [...entries].filter((entry) => !entry.deletedAt)
@@ -291,6 +314,14 @@ export class Lexicon {
       this.byId.set(entry.id, entry)
       const key = keyOf(entry.displayLemma, entry.language)
       if (!this.byKey.has(key)) this.byKey.set(key, entry.id)
+    }
+    for (const entry of this.active) {
+      for (const link of entry.links) {
+        const target = keyOf(link.lemma, link.language)
+        const list = this.linkedFrom.get(target)
+        if (list) list.push({ from: entry, relation: link.relation })
+        else this.linkedFrom.set(target, [{ from: entry, relation: link.relation }])
+      }
     }
   }
 
@@ -352,22 +383,19 @@ export class Lexicon {
       })
     }
     for (const link of entry.links) push(link, this.findId(link.lemma, link.language))
-    for (const other of this.active) {
+    for (const { from: other, relation } of this.linkedFrom.get(selfKey) ?? []) {
       if (other.id === entry.id) continue
-      for (const link of other.links) {
-        if (keyOf(link.lemma, link.language) !== selfKey) continue
-        push(
-          {
-            lemma: other.displayLemma,
-            language: other.language,
-            languageName: other.languageName,
-            relation: link.relation,
-          },
-          other.id,
-        )
-      }
+      push(
+        {
+          lemma: other.displayLemma,
+          language: other.language,
+          languageName: other.languageName,
+          relation,
+        },
+        other.id,
+      )
     }
-    return out.sort((a, b) => a.languageName.localeCompare(b.languageName))
+    return out.sort((a, b) => collator.compare(a.languageName, b.languageName))
   }
 
   detail(id: string): WordDetail | null {
@@ -409,7 +437,7 @@ export class Lexicon {
         }
         return true
       })
-      .sort((a, b) => a.displayLemma.localeCompare(b.displayLemma, undefined, { sensitivity: 'base' }))
+      .sort((a, b) => collator.compare(a.displayLemma, b.displayLemma))
       .map((entry) => this.summary(entry))
   }
 
@@ -661,35 +689,171 @@ function fromV1(raw: { words: V1Row[]; senses: V1Row[]; links: V1Row[] }): Store
   })
 }
 
-export function isStoredEntry(value: unknown): value is StoredEntry {
-  if (!value || typeof value !== 'object') return false
-  const entry = value as StoredEntry
-  return (
-    typeof entry.id === 'string' &&
-    typeof entry.displayLemma === 'string' &&
-    typeof entry.language === 'string' &&
-    Array.isArray(entry.senses) &&
-    Array.isArray(entry.links)
-  )
+const RELATIONS: LinkRelation[] = ['translation', 'synonym', 'antonym', 'related', 'phrase']
+
+function strings(value: unknown, max = 200): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string').slice(0, max) : []
+}
+
+function objects(value: unknown, max = 500): Array<Record<string, unknown>> {
+  return Array.isArray(value)
+    ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object').slice(0, max)
+    : []
+}
+
+function cleanNotice(raw: unknown): PhraseNotice | null {
+  if (!raw || typeof raw !== 'object') return null
+  const notice = raw as PhraseNotice
+  if (typeof notice.code !== 'string') return null
+  const params: Record<string, string | number> = {}
+  for (const [key, value] of Object.entries(notice.params ?? {})) {
+    if (typeof value === 'string' || typeof value === 'number') params[key] = value
+  }
+  return Object.keys(params).length ? { code: notice.code, params } : { code: notice.code }
+}
+
+function cleanAnalysis(raw: unknown): PhraseAnalysis | null {
+  if (!raw || typeof raw !== 'object') return null
+  const a = raw as Record<string, unknown>
+  if (!Array.isArray(a.tokens)) return null
+  return {
+    text: str(a.text),
+    language: str(a.language),
+    languageName: str(a.languageName, str(a.language)),
+    source: a.source === 'claude' ? 'claude' : 'dictionary',
+    translation: str(a.translation),
+    summary: str(a.summary),
+    sentenceType: str(a.sentenceType),
+    tense: str(a.tense),
+    mood: str(a.mood),
+    voice: str(a.voice),
+    clauses: objects(a.clauses, 40).map((c) => ({ text: str(c.text), type: str(c.type), explanation: str(c.explanation) })),
+    idioms: objects(a.idioms, 40).map((i) => ({ text: str(i.text), meaning: str(i.meaning) })),
+    tokens: objects(a.tokens, 200).map((t, index) => ({
+      index: num(t.index, index),
+      start: num(t.start),
+      text: str(t.text),
+      lemma: str(t.lemma, str(t.text)),
+      partOfSpeech: str(t.partOfSpeech),
+      features: strings(t.features, 20),
+      role: str(t.role),
+      gloss: str(t.gloss),
+      explanation: str(t.explanation),
+      known: t.known === true,
+      punct: t.punct === true,
+    })),
+    questions: objects(a.questions, 40).map((q) => {
+      const question: GrammarQuestion = { question: str(q.question), answer: str(q.answer) }
+      const tpl = q.template as Record<string, unknown> | undefined
+      if (tpl && typeof tpl === 'object' && (tpl.kind === 'form' || tpl.kind === 'pos')) {
+        question.template = {
+          kind: tpl.kind,
+          text: str(tpl.text),
+          lemma: str(tpl.lemma),
+          partOfSpeech: str(tpl.partOfSpeech),
+          features: strings(tpl.features, 20),
+        }
+      }
+      return question
+    }),
+    clozeIndexes: Array.isArray(a.clozeIndexes)
+      ? a.clozeIndexes.filter((n): n is number => typeof n === 'number' && Number.isInteger(n))
+      : [],
+    note: typeof a.note === 'string' ? a.note : null,
+    notice: cleanNotice(a.notice),
+    existing: null,
+  }
+}
+
+/**
+ * A record from outside this device (a backup file, another device, an old
+ * copy in storage) with every field checked and filled, or null when it is
+ * not a word or phrase at all. Everything that reads records can then rely
+ * on their shape.
+ */
+export function normalizeEntry(raw: unknown): StoredEntry | null {
+  if (!raw || typeof raw !== 'object') return null
+  const e = raw as Record<string, unknown>
+  const id = str(e.id)
+  const displayLemma = str(e.displayLemma).trim()
+  const language = str(e.language).trim()
+  if (!id || id.length > 200 || !displayLemma || !language) return null
+  const now = Date.now()
+  const createdAt = num(e.createdAt, now)
+  const status = str(e.status) as RecallStatus
+  const senses: Sense[] = objects(e.senses, 100).map((sense, index) => ({
+    id: str(sense.id, `${id}-s${index}`) || `${id}-s${index}`,
+    partOfSpeech: str(sense.partOfSpeech),
+    definition: str(sense.definition),
+    examples: strings(sense.examples, 40),
+    synonyms: strings(sense.synonyms, 60),
+    antonyms: strings(sense.antonyms, 60),
+    tags: strings(sense.tags, 20),
+    sortOrder: num(sense.sortOrder, index),
+  }))
+  const links: StoredLink[] = objects(e.links, 400)
+    .filter((link) => typeof link.lemma === 'string' && link.lemma.trim() && typeof link.language === 'string')
+    .map((link) => ({
+      lemma: str(link.lemma),
+      language: str(link.language),
+      languageName: str(link.languageName, str(link.language)),
+      relation: RELATIONS.includes(link.relation as LinkRelation) ? (link.relation as LinkRelation) : 'related',
+    }))
+  const primary = str(e.primarySenseId)
+  return {
+    id,
+    kind: e.kind === 'phrase' ? 'phrase' : 'word',
+    lemma: str(e.lemma) || normalizeLemma(displayLemma, language),
+    displayLemma,
+    language,
+    languageName: str(e.languageName, language) || language,
+    phonetic: typeof e.phonetic === 'string' ? e.phonetic : null,
+    etymology: typeof e.etymology === 'string' ? e.etymology : null,
+    note: str(e.note),
+    primarySenseId: senses.some((sense) => sense.id === primary) ? primary : (senses[0]?.id ?? null),
+    archivedAt: nullableNum(e.archivedAt),
+    status: STATUSES.includes(status) ? status : 'new',
+    easeFactor: Math.max(1.3, num(e.easeFactor, 2.5)),
+    intervalDays: Math.max(0, num(e.intervalDays)),
+    repetitions: Math.max(0, Math.floor(num(e.repetitions))),
+    dueAt: num(e.dueAt, createdAt),
+    lastReviewedAt: nullableNum(e.lastReviewedAt),
+    createdAt,
+    updatedAt: num(e.updatedAt, createdAt),
+    deletedAt: nullableNum(e.deletedAt),
+    forms: objects(e.forms, 60)
+      .filter((form) => typeof form.word === 'string')
+      .map((form) => ({ word: str(form.word), tags: strings(form.tags, 20) })),
+    senses,
+    links: uniqueLinks(links),
+    analysis: cleanAnalysis(e.analysis),
+  }
 }
 
 /** Reads a backup file in either format. Throws on anything else. */
 export function readBackup(raw: unknown): StoredEntry[] {
   if (raw && typeof raw === 'object') {
     const body = raw as { version?: unknown; entries?: unknown; words?: unknown; senses?: unknown; links?: unknown }
-    if (body.version === 2 && Array.isArray(body.entries) && body.entries.every(isStoredEntry)) {
-      return body.entries.map((entry) => ({ ...entry, deletedAt: entry.deletedAt ?? null }))
+    if (body.version === 2 && Array.isArray(body.entries)) {
+      const entries = body.entries.map(normalizeEntry).filter((entry): entry is StoredEntry => entry !== null)
+      if (entries.length || !body.entries.length) return entries
     }
     if (body.version === 1 && Array.isArray(body.words) && Array.isArray(body.senses) && Array.isArray(body.links)) {
       return fromV1(body as { words: V1Row[]; senses: V1Row[]; links: V1Row[] })
+        .map(normalizeEntry)
+        .filter((entry): entry is StoredEntry => entry !== null)
     }
   }
   throw new Error('Invalid backup file')
 }
 
 /**
- * The records to write for an import. Merge keeps what is already there and
- * adds the rest; replace also deletes (tombstones) everything not in the file.
+ * The records to write for an import.
+ * - merge adds what is not there yet and keeps each record's own timestamp,
+ *   so a backup never overrides newer changes made on another device; a
+ *   record deleted here comes back, stamped later than its deletion.
+ * - replace makes the lexicon match the file: everything else is deleted, and
+ *   the file's records are stamped now so they win everywhere.
  */
 export function planImport(
   current: StoredEntry[],
@@ -697,17 +861,66 @@ export function planImport(
   mode: 'merge' | 'replace',
   now = Date.now(),
 ): StoredEntry[] {
+  const byId = new Map(current.map((entry) => [entry.id, entry]))
   const live = current.filter((entry) => !entry.deletedAt)
   if (mode === 'replace') {
     const keep = new Set(incoming.map((entry) => entry.id))
     return [
       ...live.filter((entry) => !keep.has(entry.id)).map((entry) => tombstone(entry, now)),
-      ...incoming.map((entry) => ({ ...entry, deletedAt: null, updatedAt: now })),
+      ...incoming.map((entry) => {
+        const local = byId.get(entry.id)
+        return { ...entry, deletedAt: null, updatedAt: Math.max(now, entry.updatedAt, (local?.updatedAt ?? 0) + 1) }
+      }),
     ]
   }
   const ids = new Set(live.map((entry) => entry.id))
   const keys = new Set(live.map((entry) => keyOf(entry.displayLemma, entry.language)))
-  return incoming
-    .filter((entry) => !ids.has(entry.id) && !keys.has(keyOf(entry.displayLemma, entry.language)))
-    .map((entry) => ({ ...entry, deletedAt: null, updatedAt: now }))
+  const out: StoredEntry[] = []
+  for (const entry of incoming) {
+    const key = keyOf(entry.displayLemma, entry.language)
+    if (ids.has(entry.id) || keys.has(key)) continue
+    ids.add(entry.id)
+    keys.add(key)
+    const deleted = byId.get(entry.id)
+    out.push({
+      ...entry,
+      deletedAt: null,
+      updatedAt: deleted ? Math.max(now, deleted.updatedAt + 1) : entry.updatedAt,
+    })
+  }
+  return out
+}
+
+/**
+ * When two live records stand for the same word (kept separately on two
+ * devices before they synced, or before ids depended on the word), the
+ * changes that merge them: the one with the most review history stays and
+ * takes the other's note if it has none; the other is deleted. Every device
+ * picks the same survivor, so they converge.
+ */
+export function duplicateFixes(entries: Iterable<StoredEntry>, now = Date.now()): StoredEntry[] {
+  const groups = new Map<string, StoredEntry[]>()
+  for (const entry of entries) {
+    if (entry.deletedAt) continue
+    const key = keyOf(entry.displayLemma, entry.language)
+    const group = groups.get(key)
+    if (group) group.push(entry)
+    else groups.set(key, [entry])
+  }
+  const fixes: StoredEntry[] = []
+  for (const group of groups.values()) {
+    if (group.length < 2) continue
+    const [winner, ...losers] = [...group].sort(
+      (a, b) =>
+        b.repetitions - a.repetitions ||
+        (b.lastReviewedAt ?? 0) - (a.lastReviewedAt ?? 0) ||
+        b.updatedAt - a.updatedAt ||
+        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    )
+    if (!winner) continue
+    const note = losers.find((entry) => entry.note.trim())?.note
+    if (!winner.note.trim() && note) fixes.push(withPatch(winner, { note }, now))
+    for (const loser of losers) fixes.push(tombstone(loser, now))
+  }
+  return fixes
 }

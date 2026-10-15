@@ -54,7 +54,7 @@ export function WordTrailBar() {
             <button
               type="button"
               onClick={() => jump(i)}
-              dir={isRtl(stop.lang) ? 'rtl' : 'ltr'}
+              lang={stop.lang} dir={isRtl(stop.lang) ? 'rtl' : 'ltr'}
               className={`lemma max-w-40 truncate rounded-full px-2 py-0.5 text-sm ${
                 i === index ? 'bg-ink text-paper' : 'text-muted hover:text-ink'
               }`}

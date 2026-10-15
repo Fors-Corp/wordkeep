@@ -361,7 +361,7 @@ export async function analyzePhrase(
       return withExisting({
         ...analysis,
         note: `Claude analysis unavailable (${message}). Showing the dictionary breakdown.`,
-        notice: { code: 'claude-failed', params: { message } },
+        notice: { code: 'claude-failed' },
       })
     }
   }

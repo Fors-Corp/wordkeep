@@ -58,7 +58,7 @@ export function SyncPanel() {
       case 'unavailable':
         return t('sync.status.unavailable')
       case 'error':
-        return t('sync.status.error', { error: errorText(sync.error, t, t('sync.failed')) })
+        return t('sync.status.error', { error: errorText(sync.error, t) })
       default:
         return t('sync.status.idle')
     }
@@ -104,7 +104,7 @@ export function SyncPanel() {
                   autoCorrect="off"
                   autoComplete="off"
                   spellCheck={false}
-                  className="w-full rounded-full border border-rule bg-paper px-4 py-2 font-mono text-sm uppercase outline-none focus:border-accent"
+                  className="w-full rounded-full border border-rule bg-paper px-4 py-2 font-mono text-base uppercase outline-none focus:border-accent sm:text-sm"
                 />
               </label>
               <button type="submit" className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-paper">

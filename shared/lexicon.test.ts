@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { DEMO_PHRASE, sampleEntries, sampleId } from './demo.ts'
+import { DEMO_PHRASE, sampleEntries } from './demo.ts'
 import {
   Lexicon,
+  duplicateFixes,
   entryFromLookup,
+  entryId,
+  normalizeEntry,
   entryFromPhrase,
   planImport,
   readBackup,
@@ -207,11 +210,89 @@ describe('sample words', () => {
       samples.map((entry) => entry.id),
     )
     const lexicon = new Lexicon(samples)
-    const happyId = sampleId('word', 'en', 'happy')
+    const happyId = entryId('en', 'happy')
     const happy = lexicon.detail(happyId)!
     assert.equal(happy.displayLemma, 'happy')
     assert.ok(happy.links.some((link) => link.lemma === 'feliz' && link.toWordId))
     assert.equal(lexicon.stats(1000).phraseCount, 1)
     assert.ok(lexicon.graph().edges.length > 50)
+  })
+})
+
+describe('records from outside the device', () => {
+  it('fills missing fields and drops broken links', () => {
+    const entry = normalizeEntry({
+      id: 'x',
+      displayLemma: ' Cat ',
+      language: 'en',
+      senses: [{ definition: 'A pet.' }, 'junk'],
+      links: [{ relation: 'synonym' }, { lemma: 'kitty', language: 'en', relation: 'weird' }],
+      easeFactor: 'high',
+      status: 'flying',
+    })!
+    assert.equal(entry.displayLemma, 'Cat')
+    assert.equal(entry.lemma, 'cat')
+    assert.equal(entry.easeFactor, 2.5)
+    assert.equal(entry.status, 'new')
+    assert.deepEqual(entry.senses[0]!.synonyms, [])
+    assert.equal(entry.primarySenseId, entry.senses[0]!.id)
+    assert.deepEqual(entry.links, [{ lemma: 'kitty', language: 'en', languageName: 'en', relation: 'related' }])
+    assert.equal(normalizeEntry({ id: 'y', displayLemma: '', language: 'en' }), null)
+    assert.equal(normalizeEntry('nope'), null)
+  })
+})
+
+describe('entry ids', () => {
+  it('come from the language and the word, so devices agree', () => {
+    assert.equal(entryId('en', 'Happy'), entryId('en', 'happy'))
+    assert.notEqual(entryId('en', 'chat'), entryId('fr', 'chat'))
+    assert.equal(entryFromLookup(lookup()).id, entryId('en', 'happy'))
+  })
+})
+
+describe('duplicate entries', () => {
+  it('keeps the one with the most reviews and its note survives', () => {
+    const reviewed = { ...entryFromLookup(lookup(), { id: 'a', now: 1 }), repetitions: 4 }
+    const noted = { ...entryFromLookup(lookup(), { id: 'b', now: 2 }), note: 'mnemonic' }
+    const fixes = duplicateFixes([noted, reviewed], 10)
+    assert.deepEqual(
+      fixes.map((entry) => [entry.id, entry.note, Boolean(entry.deletedAt)]),
+      [
+        ['a', 'mnemonic', false],
+        ['b', 'mnemonic', true],
+      ],
+    )
+    assert.deepEqual(duplicateFixes([reviewed], 10), [])
+  })
+})
+
+describe('import timestamps', () => {
+  it('a merge keeps each record’s own time, but beats a deletion made here', () => {
+    const backup = entryFromLookup(lookup(), { now: 1000 })
+    const [added] = planImport([], [backup], 'merge', 9000)
+    assert.equal(added!.updatedAt, 1000)
+    const deleted = tombstone(backup, 5000)
+    const [revived] = planImport([deleted], [backup], 'merge', 9000)
+    assert.equal(revived!.deletedAt, null)
+    assert.ok(revived!.updatedAt > deleted.updatedAt)
+  })
+})
+
+describe('read model at scale', () => {
+  it('finds links to an entry without scanning every record each time', () => {
+    const many = Array.from({ length: 5000 }, (_, i) =>
+      entryFromLookup({ ...lookup(), displayLemma: `w${i}`, lemma: `w${i}`, translations: [] }, { now: i }),
+    )
+    const target = entryFromLookup(lookup(), { now: 1 })
+    const linker = {
+      ...entryFromLookup({ ...lookup(), displayLemma: 'glad', lemma: 'glad', translations: [] }),
+      links: [{ lemma: 'happy', language: 'en', languageName: 'English', relation: 'synonym' as const }],
+    }
+    const lexicon = new Lexicon([...many, target, linker])
+    const started = performance.now()
+    const queue = lexicon.reviewQueue(Number.MAX_SAFE_INTEGER)
+    assert.equal(queue.length, 5002)
+    assert.ok(performance.now() - started < 2000)
+    assert.ok(lexicon.detail(target.id)!.links.some((link) => link.lemma === 'glad' && link.toWordId === linker.id))
   })
 })

@@ -28,21 +28,36 @@ function lookup(lemma: string, overrides: Partial<LookupResult> = {}): LookupRes
 /** Behaves like POST /api/sync for one sync code: newest copy wins, every accepted write gets the next number. */
 function fakeServer() {
   let seq = 0
+  let epoch = 'db-1'
   const rows = new Map<string, { seq: number; data: string; updatedAt: number }>()
-  const sync = vi.fn<SyncFn>(async ({ since, changes }) => {
+  const sync = vi.fn<SyncFn>(async ({ since, changes, epoch: known }) => {
+    const reset = since > 0 && ((known != null && known !== epoch) || since > seq)
+    const lost: StoredEntry[] = []
     for (const entry of changes) {
       const current = rows.get(entry.id)
-      if (current && current.updatedAt >= entry.updatedAt) continue
+      if (current && current.updatedAt >= entry.updatedAt) {
+        if (current.updatedAt > entry.updatedAt) lost.push(JSON.parse(current.data) as StoredEntry)
+        continue
+      }
       rows.set(entry.id, { seq: ++seq, data: JSON.stringify(entry), updatedAt: entry.updatedAt })
     }
+    if (reset) return { cursor: 0, changes: [], more: false, reset: true, epoch }
     const out = [...rows.values()].filter((row) => row.seq > since).sort((a, b) => a.seq - b.seq).slice(0, 500)
+    const pulled = out.map((row) => JSON.parse(row.data) as StoredEntry)
     return {
       cursor: out.at(-1)?.seq ?? since,
-      changes: out.map((row) => JSON.parse(row.data) as StoredEntry),
+      changes: [...pulled, ...lost.filter((entry) => !pulled.some((row) => row.id === entry.id))],
       more: out.length === 500,
+      epoch,
     }
   })
-  return { sync, rows }
+  /** The server's store is replaced: nothing in it, numbering starts again. */
+  const wipe = () => {
+    rows.clear()
+    seq = 0
+    epoch = `db-${Math.random()}`
+  }
+  return { sync, rows, wipe }
 }
 
 const offline: SyncFn = async () => {
@@ -76,7 +91,7 @@ describe('device lexicon', () => {
     await device.flush()
     expect(device.lexicon.detail(id)).toBeNull()
     expect((await store.loadEntries())[0]?.deletedAt).not.toBeNull()
-    expect(await store.getMeta('dirty')).toEqual([id])
+    expect(await store.dirtyIds()).toEqual([id])
   })
 
   it('loads the sample words once', async () => {
@@ -207,7 +222,7 @@ describe('sync between devices', () => {
     device.stopSync()
     await device.flush()
     expect(device.sync).toMatchObject({ key: null, status: 'off' })
-    expect(await store.getMeta('syncKey')).toBeUndefined()
+    expect(await store.getSync()).toBeNull()
     await expect(device.startSync('not a code')).rejects.toThrow('Invalid sync code')
   })
 
@@ -224,6 +239,204 @@ describe('sync between devices', () => {
     expect(reopened.sync.key).toBe(code)
     await reopened.syncNow()
     expect(server.rows.has(id)).toBe(true)
-    expect(await store.getMeta('dirty')).toEqual([])
+    expect(await store.dirtyIds()).toEqual([])
+  })
+})
+
+describe('several tabs on one device', () => {
+  it('see each other\'s changes, so an edit in one never undoes a review in another', async () => {
+    const tabA = await DeviceLexicon.open(await openDeviceStore(), { sync: offline })
+    const tabC = await DeviceLexicon.open(await openDeviceStore(), { sync: offline })
+    const { id } = tabA.keepLookup(lookup('happy'))
+    await tabA.flush()
+    await vi.waitFor(() => expect(tabC.lexicon.detail(id)).not.toBeNull())
+
+    tabC.grade(id, 'easy')
+    await tabC.flush()
+    await vi.waitFor(() => expect(tabA.lexicon.detail(id)?.repetitions).toBe(1))
+    tabA.patch(id, { note: 'smile' })
+    await tabA.flush()
+
+    const reopened = await DeviceLexicon.open(await openDeviceStore(), { sync: offline })
+    expect(reopened.lexicon.detail(id)).toMatchObject({ note: 'smile', repetitions: 1 })
+    for (const tab of [tabA, tabC, reopened]) tab.close()
+  })
+
+  it('never lose each other\'s unsent changes', async () => {
+    const tabA = await DeviceLexicon.open(await openDeviceStore(), { sync: offline })
+    const tabB = await DeviceLexicon.open(await openDeviceStore(), { sync: offline })
+    const w = tabB.keepLookup(lookup('happy'))
+    await tabB.flush()
+    const y = tabA.keepLookup(lookup('sad'))
+    await tabA.flush()
+    const store = await openDeviceStore()
+    expect((await store.dirtyIds()).sort()).toEqual([w.id, y.id].sort())
+    tabA.close()
+    tabB.close()
+  })
+})
+
+describe('merging lexicons', () => {
+  it('joining a code after loading samples keeps the progress and deletions made elsewhere', async () => {
+    const server = fakeServer()
+    const first = await DeviceLexicon.open(new MemoryStore(), { sync: server.sync })
+    first.loadSamples()
+    const happy = first.lexicon.findId('happy', 'en')!
+    const glad = first.lexicon.findId('glad', 'en')!
+    first.grade(happy, 'good')
+    first.remove(glad)
+    const code = await first.startSync()
+
+    const second = await DeviceLexicon.open(new MemoryStore(), { sync: server.sync })
+    second.loadSamples()
+    await second.startSync(code)
+    await first.syncNow()
+
+    for (const device of [first, second]) {
+      expect(device.lexicon.detail(happy)?.repetitions).toBe(1)
+      expect(device.lexicon.detail(glad)).toBeNull()
+    }
+  })
+
+  it('the same word kept on two devices becomes one entry', async () => {
+    const server = fakeServer()
+    const phone = await DeviceLexicon.open(new MemoryStore(), { sync: server.sync })
+    const laptop = await DeviceLexicon.open(new MemoryStore(), { sync: server.sync })
+    phone.keepLookup(lookup('chat', { language: 'fr', languageName: 'French' }))
+    laptop.keepLookup(lookup('chat', { language: 'fr', languageName: 'French' }))
+    // An entry from before ids came from the word itself.
+    laptop.importBackup(
+      { version: 1, words: [{ id: 'old-random', lemma: 'cat', language: 'en', status: 'review', repetitions: 3 }], senses: [], links: [] },
+      'merge',
+    )
+    phone.keepLookup(lookup('cat'))
+    const code = await phone.startSync()
+    await laptop.startSync(code)
+    await phone.syncNow()
+    for (const device of [phone, laptop]) {
+      expect(device.lexicon.list().map((word) => word.displayLemma)).toEqual(['cat', 'chat'])
+      expect(device.lexicon.detail('old-random')?.repetitions).toBe(3)
+    }
+  })
+
+  it('a backup with broken records cannot break the lexicon', async () => {
+    const device = await DeviceLexicon.open(new MemoryStore(), { sync: offline })
+    device.keepLookup(lookup('happy'))
+    const added = device.importBackup(
+      {
+        version: 2,
+        entries: [
+          { id: 'x1', displayLemma: 'broken', language: 'en', senses: [{}], links: [{ relation: 'synonym' }] },
+          { id: 'x2', displayLemma: '', language: 'en' },
+        ],
+      },
+      'merge',
+    )
+    expect(added).toBe(1)
+    const happy = device.lexicon.findId('happy', 'en')!
+    expect(device.lexicon.detail(happy)?.displayLemma).toBe('happy')
+    expect(device.lexicon.reviewQueue().length).toBe(2)
+    expect(() => device.lexicon.graph()).not.toThrow()
+    device.grade('x1', 'good')
+    expect(Number.isFinite(device.lexicon.detail('x1')!.dueAt)).toBe(true)
+  })
+})
+
+describe('sync recovery', () => {
+  it('starts over when the server lost its data', async () => {
+    const server = fakeServer()
+    const phone = await DeviceLexicon.open(new MemoryStore(), { sync: server.sync })
+    phone.keepLookup(lookup('happy'))
+    const code = await phone.startSync()
+    server.wipe()
+    // Someone else writes to the fresh store first, so its numbering starts below the phone's cursor.
+    const laptop = await DeviceLexicon.open(new MemoryStore(), { sync: server.sync })
+    laptop.keepLookup(lookup('sad'))
+    await laptop.startSync(code)
+
+    await phone.syncNow()
+    expect(phone.lexicon.list().map((word) => word.displayLemma)).toEqual(['happy', 'sad'])
+    await laptop.syncNow()
+    expect(laptop.lexicon.list().map((word) => word.displayLemma)).toEqual(['happy', 'sad'])
+  })
+
+  it('takes the server copy when its own push lost', async () => {
+    const server = fakeServer()
+    const a = await DeviceLexicon.open(new MemoryStore(), { sync: server.sync })
+    const { id } = a.keepLookup(lookup('happy'))
+    const code = await a.startSync()
+    const b = await DeviceLexicon.open(new MemoryStore(), { sync: server.sync })
+    await b.startSync(code)
+    // b edits the copy it has with a clock that runs behind a's.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(Date.now() + 60_000)
+      a.patch(id, { note: 'newer' })
+      vi.setSystemTime(1)
+      b.patch(id, { note: 'stale' })
+    } finally {
+      vi.useRealTimers()
+    }
+    await a.syncNow()
+    await b.syncNow()
+    expect(b.lexicon.detail(id)?.note).toBe('newer')
+  })
+
+  it('switching codes during a sync still syncs the new code', async () => {
+    let release: () => void = () => undefined
+    const server = fakeServer()
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    const slow: SyncFn = async (body) => {
+      await gate
+      return server.sync(body)
+    }
+    const device = await DeviceLexicon.open(new MemoryStore(), { sync: slow })
+    device.keepLookup(lookup('happy'))
+    const first = device.startSync()
+    await vi.waitFor(() => expect(device.sync.status).toBe('syncing'))
+    device.stopSync()
+    const second = device.startSync()
+    release()
+    await first
+    const code = await second
+    expect(device.sync).toMatchObject({ key: code, status: 'ok' })
+    expect(server.rows.size).toBe(1)
+  })
+
+  it('waits before asking a server without sync again', async () => {
+    const calls = vi.fn(async () => {
+      throw new ApiError('Sync is not set up on this server', 503, 'sync-unavailable')
+    })
+    const device = await DeviceLexicon.open(new MemoryStore(), { sync: calls })
+    await device.startSync()
+    expect(device.sync.status).toBe('unavailable')
+    await device.syncNow({ auto: true })
+    await device.syncNow({ auto: true })
+    expect(calls).toHaveBeenCalledTimes(1)
+    await device.syncNow()
+    expect(calls).toHaveBeenCalledTimes(2)
+  })
+
+  it('tells the old server only once its words are saved', async () => {
+    const legacyAck = vi.fn(async () => ({ ok: true }))
+    const legacy = async () => ({
+      version: 1,
+      words: [{ id: 'old-1', lemma: 'cat', language: 'en', status: 'new' }],
+      senses: [],
+      links: [],
+    })
+    const store = new MemoryStore()
+    const device = await DeviceLexicon.open(store, { sync: offline, legacy, legacyAck })
+    expect(legacyAck).toHaveBeenCalledTimes(1)
+    expect((await store.loadEntries()).map((entry) => entry.id)).toEqual(['old-1'])
+    expect(device.lexicon.size).toBe(1)
+
+    const empty = vi.fn(async () => ({ ok: true }))
+    await DeviceLexicon.open(new MemoryStore(), {
+      sync: offline,
+      legacy: async () => ({ version: 1, words: [], senses: [], links: [] }),
+      legacyAck: empty,
+    })
+    expect(empty).not.toHaveBeenCalled()
   })
 })

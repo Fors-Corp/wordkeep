@@ -129,6 +129,44 @@ test('two devices share one lexicon through a sync code', async ({ browser }) =>
   await expect(phone.locator('span.lemma', { hasText: /^happy$/ })).toBeVisible()
 })
 
+test('two tabs on one device see each other\'s changes', async ({ context }) => {
+  const first = await context.newPage()
+  await loadSamples(first)
+  const second = await context.newPage()
+  await second.goto('/words')
+  await expect(second.locator('span.lemma', { hasText: /^glad$/ })).toBeVisible()
+
+  await second.locator('span.lemma', { hasText: /^glad$/ }).click()
+  second.once('dialog', (dialog) => void dialog.accept())
+  await second.getByRole('button', { name: 'Delete' }).click()
+  // The first tab drops it without a reload.
+  await expect(first.locator('span.lemma', { hasText: /^glad$/ })).toHaveCount(0)
+  await expect(first.locator('span.lemma', { hasText: /^happy$/ })).toBeVisible()
+})
+
+test('phone: the dictionary language menu stays on screen', async ({ browser }) => {
+  const page = await (await browser.newContext({ viewport: { width: 375, height: 812 }, hasTouch: true })).newPage()
+  await page.goto('/')
+  await page.getByRole('button', { name: /Dictionary language/ }).click()
+  const search = page.getByRole('textbox', { name: 'Dictionary language' })
+  await expect(search).toBeFocused()
+  const box = (await search.boundingBox())!
+  expect(box.x).toBeGreaterThanOrEqual(0)
+  expect(box.x + box.width).toBeLessThanOrEqual(375)
+  expect(await search.evaluate((el) => getComputedStyle(el).fontSize)).toBe('16px')
+})
+
+test('review shortcuts leave links and buttons alone', async ({ page }) => {
+  await loadSamples(page)
+  await page.goto('/review')
+  await expect(page.getByRole('button', { name: /Again/ })).toBeDisabled()
+  await page.keyboard.press('Space')
+  await expect(page.getByRole('button', { name: /Again/ })).toBeEnabled()
+  await page.getByRole('link', { name: 'Lexicon' }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/\/words$/)
+})
+
 test('Discover page loads', async ({ page }) => {
   await page.goto('/discover')
   await expect(page.getByRole('heading', { name: /Discover/i })).toBeVisible()

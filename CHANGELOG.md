@@ -2,6 +2,61 @@
 
 All notable changes to Wordkeep are documented here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [2.1.0] - 2026-10-15
+
+A full audit of the app, with fixes across the server, device storage and sync, the pages, and translations.
+
+### Security
+
+- Language codes in query strings (`lang`, `ui`, `explain`) are checked against a plain-code pattern. A crafted code could make the server send requests to other hosts, freeze it with a slow regular expression, or read and write files outside its word-bank folder. Bad codes now get `400 bad-lang`.
+- Request bodies are capped (64 KB, 8 MB for sync), including chunked uploads.
+- Access key: the cookie holds a token derived from the key instead of the key itself, the key is compared in constant time, ten wrong keys pause logins for 15 minutes, and the cookie is `Secure` only over HTTPS (so `docker run` on a LAN address can sign in).
+- Claude rate limits identify visitors by the socket address, not by an `X-Forwarded-For` header anyone can set. Set `TRUST_PROXY=1` behind your own reverse proxy.
+- hono 4.13.13.
+
+### Fixed: device storage and sync
+
+- Several open tabs no longer overwrite each other. Each record is saved in one transaction with its "not yet sent" mark, other tabs reload what changed, and one tab syncs at a time.
+- Joining a sync code after loading the samples or importing a backup no longer undoes reviews, notes and deletions made on other devices. Samples and merged backups keep their own timestamps.
+- The same word kept on two devices becomes one entry. Ids now come from the language and the word, and older duplicates are merged, keeping the copy with the most reviews.
+- A device recovers when the server's sync store is replaced (wiped, or moved to a new database). The server sends a database epoch and tells a device to start over.
+- A change that loses to a newer copy on the server is replaced by that copy instead of staying different on that device.
+- Broken records from a backup or another device are repaired or rejected instead of breaking every page.
+- The 20,000-entry limit counts only new entries, so edits and deletions always sync.
+- Turning sync off and joining another code while a sync is running now syncs the new code right away.
+- Old server words are handed over once, after the device has saved them, rather than to every new browser.
+- A failed save to the device shows a warning instead of disappearing silently.
+- Sync waits 10 minutes between automatic tries when the server has no sync set up.
+- Lists and the review queue stay fast with very large lexicons.
+
+### Fixed: pages
+
+- The dictionary-language menu no longer runs off the left edge on phones.
+- Review shortcuts no longer take over Enter and Space on links and buttons. Cards edited or deleted elsewhere update in the queue, and a device that just joined sync gets its cards without reloading.
+- A note on an entry no longer overwrites a newer note synced from another device.
+- The atlas loads only where it is shown (about 600 kB less on first load), keeps its view when unrelated data changes, gives back WebGL contexts, and lets one finger scroll the page on phones (two fingers turn it).
+- Suggestions no longer reopen after you pick one, and menus close when you tap outside on iPhone.
+- Inputs are 16 px on phones, so iOS no longer zooms in on focus.
+- Lexicon search no longer adds a history entry per letter, Back after deleting an entry skips the deleted page, and importing a backup asks Add / Replace / Cancel.
+- Discover pairs are readable in dark mode, and Keep reports failures.
+- The Atlas view follows the address, the word trail keeps recording after jumping to the current word, and backup downloads work in Safari.
+- App language menu: focus starts on the current language, arrow keys move between languages, Tab stays inside, and Escape returns focus.
+- Foreign words carry their language for screen readers, and the hidden side of a review card is hidden from them.
+- Safe-area padding and light/dark theme colors for the Home Screen app.
+
+### Fixed: translations and errors
+
+- Network and server errors are shown in the app language instead of raw English. The server sends codes for upstream failures, bad input and login errors.
+- European Portuguese plural rules ("0 cartões"), numbers grouped per language, and dates and lists in the app language.
+- French review prompt and the sync error sentence reworded.
+
+### Changed
+
+- The Docker image runs Node 22 (as `engines` and CI do) and starts Node directly so it shuts down cleanly.
+- Discover gives up after 25 lookups or 20 seconds instead of retrying the whole word bank when the dictionary is down. Missing word lists and language lists are not re-downloaded on every request.
+- A lookup still works when the main dictionary fails but Wiktionary answers.
+- Removed the unused `/api/play/bank` route.
+
 ## [2.0.0] - 2026-10-15
 
 ### Changed

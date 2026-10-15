@@ -2,11 +2,15 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { SuggestResponse, Suggestion } from '../../shared/types.ts'
 import { languageName } from './languages.ts'
+import { isLangCode } from './params.ts'
 import { writableDir } from './paths.ts'
 
 const bankDir = writableDir('banks')
 
 const memory = new Map<string, string[]>()
+// Languages with no word list upstream, so each keystroke does not retry the download.
+const missing = new Map<string, number>()
+const MISSING_TTL = 60 * 60 * 1000
 const FREQ_ALIAS: Record<string, string> = {
   zh: 'zh_cn',
   cmn: 'zh_cn',
@@ -63,6 +67,8 @@ async function downloadSuggestList(lang: string): Promise<string[]> {
 }
 
 async function getSuggestBank(lang: string): Promise<string[]> {
+  // The code becomes a file name and a URL path.
+  if (!isLangCode(lang)) return []
   const cached = memory.get(lang)
   if (cached?.length) return cached
   const path = join(bankDir, `suggest-${lang}.json`)
@@ -77,10 +83,17 @@ async function getSuggestBank(lang: string): Promise<string[]> {
       /* rebuild */
     }
   }
+  if ((missing.get(lang) ?? 0) > Date.now()) return []
   const words = await downloadSuggestList(lang)
   if (words.length) {
-    writeFileSync(path, JSON.stringify(words))
+    try {
+      writeFileSync(path, JSON.stringify(words))
+    } catch {
+      /* read-only disk: keep it in memory */
+    }
     memory.set(lang, words)
+  } else {
+    missing.set(lang, Date.now() + MISSING_TTL)
   }
   return words
 }
