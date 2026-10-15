@@ -181,9 +181,10 @@ export function Home() {
             dir={isRtl(current?.code ?? 'en') ? 'rtl' : 'ltr'}
             className="lemma w-full rounded-2xl border border-rule bg-paper px-4 py-3 text-xl outline-none focus:border-accent"
             autoFocus
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
+            lang={current?.code ?? 'en'}
+            autoCapitalize={isPhrase ? 'sentences' : 'none'}
+            autoCorrect="on"
+            spellCheck
             autoComplete="off"
             role="combobox"
             aria-autocomplete="list"
