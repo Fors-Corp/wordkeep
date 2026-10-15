@@ -3,8 +3,9 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { PhraseAnalysisView } from '../components/PhraseAnalysis'
 import { FormsLine } from '../components/SenseExtras'
 import { SenseList } from '../components/SenseList'
-import { WordGraph } from '../components/WordGraph'
+import { LazyWordGraph as WordGraph } from '../components/LazyWordGraph'
 import { useI18n } from '../context/I18nContext'
+import { intlLocale } from '../i18n'
 import { useLexicon } from '../context/LexiconContext'
 import { useWordTrail } from '../context/WordTrailContext'
 import { api } from '../lib/api'
@@ -16,21 +17,28 @@ export function WordPage() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const { device, lexicon, ready } = useLexicon()
-  const { t, explainFor, languageName } = useI18n()
+  const { t, explainFor, languageName, locale } = useI18n()
   const { visit } = useWordTrail()
   const word = useMemo(() => lexicon.detail(id), [lexicon, id])
   const graph = useMemo(() => lexicon.graph(id), [lexicon, id])
   const [note, setNote] = useState('')
+  // The saved note the text box started from; only a change from it is saved.
+  const [baseNote, setBaseNote] = useState('')
+  const [editing, setEditing] = useState(false)
   const [error, setError] = useState('')
   const [reanalyzing, setReanalyzing] = useState(false)
   const missing = ready && !word
 
   useEffect(() => {
-    setNote(word?.note ?? '')
     setError('')
-    // Only when another entry opens (or it first loads); typing must not be overwritten.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [word?.id])
+
+  // Follow the saved note (another tab or device may change it) unless the reader is typing.
+  useEffect(() => {
+    if (editing) return
+    setNote(word?.note ?? '')
+    setBaseNote(word?.note ?? '')
+  }, [word?.id, word?.note, editing])
 
   useEffect(() => {
     if (!word) return
@@ -44,8 +52,10 @@ export function WordPage() {
   }, [word?.id, word?.lemma, word?.language, word?.displayLemma, visit])
 
   function saveNote() {
-    if (!word || note === word.note) return
+    setEditing(false)
+    if (!word || note === baseNote) return
     device?.patch(word.id, { note })
+    setBaseNote(note)
   }
 
   async function reanalyze() {
@@ -71,7 +81,8 @@ export function WordPage() {
     if (!word) return
     if (!confirm(t('word.deleteConfirm', { word: word.displayLemma }))) return
     device?.remove(word.id)
-    navigate('/words')
+    // Replace, so Back does not return to the entry that is gone.
+    navigate('/words', { replace: true })
   }
 
   if (missing) {
@@ -94,11 +105,11 @@ export function WordPage() {
         <p className="text-xs uppercase tracking-[0.18em] text-gold">
           {isPhrase ? `${t('word.phrase')} · ` : ''}
           {languageName(word.language, word.languageName)} · {statusLabel(word.status, t)} ·{' '}
-          {formatDue(word.dueAt, undefined, t)}
+          {formatDue(word.dueAt, undefined, t, intlLocale(locale))}
         </p>
         <h1
           className={`lemma mt-2 ${isPhrase ? 'text-4xl sm:text-5xl' : 'text-5xl sm:text-6xl'}`}
-          dir={isRtl(word.language) ? 'rtl' : 'ltr'}
+          lang={word.language} dir={isRtl(word.language) ? 'rtl' : 'ltr'}
         >
           {word.displayLemma}
         </h1>
@@ -152,8 +163,9 @@ export function WordPage() {
           <textarea
             value={note}
             onChange={(event) => setNote(event.target.value)}
+            onFocus={() => setEditing(true)}
             onBlur={() => saveNote()}
-            className="h-28 w-full rounded-2xl border border-rule bg-paper-2 p-3 text-sm outline-none"
+            className="h-28 w-full rounded-2xl border border-rule bg-paper-2 p-3 text-base outline-none sm:text-sm"
           />
         </label>
         <p className="mt-1 text-xs text-muted">{t('word.savedOnBlur')}</p>
@@ -189,7 +201,7 @@ export function WordPage() {
               <Link
                 to={link.toWordId ? keptHref(link.toWordId) : lookupHref(link.lemma, link.language)}
                 className="lemma text-lg"
-                dir={isRtl(link.language) ? 'rtl' : 'ltr'}
+                lang={link.language} dir={isRtl(link.language) ? 'rtl' : 'ltr'}
               >
                 {link.lemma}
               </Link>

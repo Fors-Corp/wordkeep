@@ -3,12 +3,20 @@ import { join } from 'node:path'
 import type { PlayCard, PlayRound } from '../../shared/types.ts'
 import { languageName } from './languages.ts'
 import { lookupWord } from './lookup.ts'
+import { isLangCode } from './params.ts'
 import { writableDir } from './paths.ts'
 
 const bankDir = writableDir('banks')
 
 const memory = new Map<string, string[]>()
+// Languages with no word list upstream, so each request does not retry the download.
+const missing = new Map<string, number>()
+const MISSING_TTL = 60 * 60 * 1000
 const NEED = 2000
+// A round gives up after this many lookups or this long, so a dictionary
+// outage costs a few requests instead of thousands.
+const MAX_ATTEMPTS = 25
+const ROUND_DEADLINE_MS = 20_000
 const FREQ_ALIAS: Record<string, string> = {
   zh: 'zh_cn',
   cmn: 'zh_cn',
@@ -87,6 +95,8 @@ async function downloadBank(lang: string): Promise<string[]> {
 }
 
 export async function getBank(lang: string): Promise<string[]> {
+  // The code becomes a file name and a URL path.
+  if (!isLangCode(lang)) return []
   const cached = memory.get(lang)
   if (cached && cached.length >= NEED) return cached
   const path = join(bankDir, `${lang}.json`)
@@ -101,10 +111,17 @@ export async function getBank(lang: string): Promise<string[]> {
       /* rebuild */
     }
   }
+  if ((missing.get(lang) ?? 0) > Date.now()) return []
   const words = await downloadBank(lang)
   if (words.length >= NEED) {
-    writeFileSync(path, JSON.stringify(words))
+    try {
+      writeFileSync(path, JSON.stringify(words))
+    } catch {
+      /* read-only disk: keep it in memory */
+    }
     memory.set(lang, words)
+  } else {
+    missing.set(lang, Date.now() + MISSING_TTL)
   }
   return words
 }
@@ -134,9 +151,12 @@ export async function buildRound(lang: string): Promise<PlayRound | null> {
   const pool = shuffle(bank)
   const cards: PlayCard[] = []
   const used = new Set<string>()
+  const deadline = Date.now() + ROUND_DEADLINE_MS
+  let attempts = 0
   for (const lemma of pool) {
-    if (cards.length >= 5) break
+    if (cards.length >= 5 || attempts >= MAX_ATTEMPTS || Date.now() > deadline) break
     if (used.has(lemma.toLowerCase())) continue
+    attempts += 1
     try {
       const lookup = await lookupWord(lemma, lang)
       const sense = lookup?.senses[0]

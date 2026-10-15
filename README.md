@@ -26,9 +26,11 @@ In **Lexicon → Sync across devices**, **Turn on sync** creates a private 26-ch
 - Limits: 20,000 entries per code, 500 changes per request.
 - On iPhone, add Wordkeep to the Home Screen (Share → Add to Home Screen). Safari can clear website data after 7 days without a visit, and Home Screen apps are exempt. Sync is the backup either way.
 
-A server that stored words before 2.0 hands them to the first browser that opens it (`GET /api/legacy/export`).
+A server that stored words before 2.0 hands them to the first browser that opens it and saves them (`GET /api/legacy/export`, confirmed with `POST /api/legacy/ack`); turn on sync there to bring them to your other devices.
 
-Set `WORDKEEP_ACCESS_KEY` to require a key before anyone can use the app or its API.
+Several tabs can stay open at once: they share the device's lexicon and see each other's changes. If the same word was kept separately on two devices, the copies merge into one entry (the one with the most reviews stays) when they sync.
+
+Set `WORDKEEP_ACCESS_KEY` to require a key before anyone can use the app or its API. Signing in sets a session cookie derived from the key (not the key itself); scripts can send `Authorization: Bearer <key>`. Ten wrong keys from one visitor pause logins for 15 minutes.
 
 Set `ANTHROPIC_API_KEY` to have Claude analyze phrases (structure, tense, idioms, translation, quiz questions). Without it, phrases get a word-by-word dictionary breakdown. `ANTHROPIC_MODEL` overrides the model (default `claude-sonnet-5-5`).
 
@@ -39,6 +41,7 @@ Each Claude analysis is a paid API call, so every visitor is rate limited:
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `WORDKEEP_AI_DAILY_PER_VISITOR` | `10` | Claude analyses per visitor (hashed IP) per UTC day |
+| `TRUST_PROXY` | — | Set to `1` behind your own reverse proxy so visitors are told apart by the last `X-Forwarded-For` hop. Vercel and Fly are recognized without it; otherwise the socket address is used and forwarding headers are ignored. |
 | `WORDKEEP_AI_DAILY_TOTAL` | `100` | Claude analyses for the whole app per UTC day |
 | `KV_REST_API_URL` + `KV_REST_API_TOKEN` (or `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`) | — | Upstash Redis for shared counters and the analysis cache |
 
@@ -75,11 +78,11 @@ npm run lint         # oxlint (client)
 npm run typecheck    # server + client
 ```
 
-GitHub Actions runs lint, typecheck, unit tests, the build, and Playwright on every pull request.
+`.github/workflows/ci.yml` runs lint, typecheck, unit tests, the build, and Playwright on every pull request, once GitHub Actions is allowed for the repository (organization Settings → Actions → General).
 
 Live demo: https://wordkeep-zeta.vercel.app
 
-Source: https://github.com/marcfs31/wordkeep
+Source: https://github.com/Fors-Corp/wordkeep
 
 Phrase analysis with Claude takes several seconds; on Vercel, raise the function's max duration if requests time out. For Claude on Vercel, add `ANTHROPIC_API_KEY` under Project → Settings → Environment Variables and connect Upstash Redis (see above).
 
@@ -99,7 +102,7 @@ docker build -t wordkeep .
 docker run --rm -p 3001:3001 -v wordkeep-data:/data wordkeep
 ```
 
-Deploy to [Fly.io](https://fly.io) (free allowance, persistent volume for the sync records and Claude cache):
+Deploy to [Fly.io](https://fly.io) (a small VM with a persistent volume for the sync records and Claude cache):
 
 ```bash
 fly launch --copy-config --yes

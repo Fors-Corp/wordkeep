@@ -161,10 +161,18 @@ describe('Claude rate limits', () => {
   it('identifies visitors by IP without storing it', async () => {
     const probe = new Hono().get('/', (c) => c.text(visitorId(c)))
     const id = async (headers: Record<string, string>) => (await probe.request('/', { headers })).text()
-    const a = await id({ 'x-forwarded-for': '1.2.3.4, 10.0.0.1' })
-    assert.equal(a, await id({ 'x-forwarded-for': '1.2.3.4' }))
-    assert.notEqual(a, await id({ 'x-forwarded-for': '5.6.7.8' }))
-    assert.ok(!a.includes('1.2.3.4'))
+    // Without a known proxy, forwarding headers are anyone's to set and are ignored.
+    assert.equal(await id({ 'x-forwarded-for': '1.2.3.4' }), await id({ 'x-forwarded-for': '5.6.7.8' }))
+    process.env.TRUST_PROXY = '1'
+    try {
+      // Behind your own proxy, the hop it appended (the last one) counts.
+      const a = await id({ 'x-forwarded-for': 'spoofed, 1.2.3.4' })
+      assert.equal(a, await id({ 'x-forwarded-for': '1.2.3.4' }))
+      assert.notEqual(a, await id({ 'x-forwarded-for': '5.6.7.8' }))
+      assert.ok(!a.includes('1.2.3.4'))
+    } finally {
+      delete process.env.TRUST_PROXY
+    }
     assert.equal(await id({ 'x-real-ip': '9.9.9.9' }), await id({}))
     process.env.VERCEL = '1'
     assert.notEqual(await id({ 'x-real-ip': '9.9.9.9' }), await id({}))
@@ -172,6 +180,7 @@ describe('Claude rate limits', () => {
 
   it('the API passes each caller’s identity to the limiter', async () => {
     process.env.WORDKEEP_AI_DAILY_PER_VISITOR = '1'
+    process.env.TRUST_PROXY = '1'
     const ask = (q: string, ip: string) =>
       app.request(`/api/phrase/analyze?q=${encodeURIComponent(q)}&lang=en&explain=es`, {
         headers: { 'x-forwarded-for': ip },

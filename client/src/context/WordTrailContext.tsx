@@ -37,13 +37,14 @@ export function WordTrailProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<TrailState>({ trail: [], index: -1 })
   const stateRef = useRef(state)
   stateRef.current = state
-  const skipRecord = useRef(false)
+  // The stop we are moving to along the trail, which must not be recorded as a new visit.
+  // Matched by address, so a page that never reports its visit cannot swallow the next one.
+  const skipHref = useRef<string | null>(null)
 
   const visit = useCallback((stop: WordStop) => {
-    if (skipRecord.current) {
-      skipRecord.current = false
-      return
-    }
+    const skip = skipHref.current
+    skipHref.current = null
+    if (skip === stop.href) return
     setState((current) => {
       const here = current.trail[current.index]
       if (here && here.href === stop.href) return current
@@ -55,10 +56,10 @@ export function WordTrailProvider({ children }: { children: ReactNode }) {
 
   const moveTo = useCallback(
     (nextIndex: number) => {
-      const { trail } = stateRef.current
+      const { trail, index } = stateRef.current
       const stop = trail[nextIndex]
-      if (!stop) return
-      skipRecord.current = true
+      if (!stop || nextIndex === index) return
+      skipHref.current = stop.href
       setState((current) => ({ ...current, index: nextIndex }))
       navigate(stop.href)
     },

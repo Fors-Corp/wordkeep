@@ -47,14 +47,23 @@ function fill(template: string, vars?: Vars): string {
   )
 }
 
+/**
+ * The locale Intl should use. The app's Portuguese is European Portuguese,
+ * where 0 takes the plural ("0 cartões"), unlike Brazilian rules.
+ */
+export function intlLocale(locale: Locale): string {
+  return locale === 'pt' ? 'pt-PT' : locale
+}
+
 export function translator(locale: Locale): { t: Translate; tp: TranslatePlural } {
   const messages = MESSAGES[locale]
-  const rules = new Intl.PluralRules(locale)
+  const rules = new Intl.PluralRules(intlLocale(locale))
+  const numbers = new Intl.NumberFormat(intlLocale(locale))
   const t: Translate = (key, vars) => fill(messages[key] ?? en[key] ?? key, vars)
   const tp: TranslatePlural = (key, count, vars) => {
     const form = rules.select(count) === 'one' ? 'one' : 'other'
     const full = `${key}.${form}` as MessageKey
-    return t(full in en ? full : (`${key}.other` as MessageKey), { count, ...vars })
+    return t(full in en ? full : (`${key}.other` as MessageKey), { count: numbers.format(count), ...vars })
   }
   return { t, tp }
 }
@@ -62,7 +71,7 @@ export function translator(locale: Locale): { t: Translate; tp: TranslatePlural 
 /** Human name of a language code in the given app language, e.g. de → "alemany" in Catalan. */
 export function languageNameIn(code: string, locale: Locale, fallback = code): string {
   try {
-    const name = new Intl.DisplayNames([locale], { type: 'language', fallback: 'none' }).of(code)
+    const name = new Intl.DisplayNames([intlLocale(locale)], { type: 'language', fallback: 'none' }).of(code)
     if (name && name !== code) return name
   } catch {
     /* some dictionary codes are not ISO */

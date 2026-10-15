@@ -8,7 +8,14 @@ import { db } from './db.ts'
 import { spaceFor, syncBackend } from './sync.ts'
 import { lookupFixture } from './test/fixtures.ts'
 
-type SyncResponse = { cursor: number; changes: StoredEntry[]; more: boolean; code?: string }
+type SyncResponse = {
+  cursor: number
+  changes: StoredEntry[]
+  more: boolean
+  reset?: boolean
+  epoch?: string
+  code?: string
+}
 
 async function sync(body: unknown): Promise<{ status: number; body: SyncResponse }> {
   const res = await app.request('/api/sync', {
@@ -86,6 +93,66 @@ describe('sync', () => {
     assert.equal((await sync({ key: createSyncKey(), changes: [{ id: 1 }] })).body.code, 'sync-bad-record')
     const tooMany = Array.from({ length: 501 }, (_, i) => entryFromLookup(lookupFixture(), { id: `x${i}` }))
     assert.equal((await sync({ key: createSyncKey(), changes: tooMany })).status, 413)
+  })
+
+  it('sends a pushed record back when the server already has a newer copy', async () => {
+    const key = createSyncKey()
+    const base = entryFromLookup(lookupFixture(), { now: 1000, id: 'w1' })
+    await sync({ key, since: 0, changes: [withPatch(base, { note: 'from the laptop' }, 5000)] })
+    const phone = await sync({ key, since: 0, changes: [] })
+    // The phone's clock runs behind: its edit is older than the copy it already has.
+    const late = await sync({ key, since: phone.body.cursor, changes: [withPatch(base, { note: 'from the phone' }, 4000)] })
+    assert.deepEqual(
+      late.body.changes.map((entry) => entry.note),
+      ['from the laptop'],
+    )
+  })
+
+  it('tells a device to start over when its cursor is past anything handed out', async () => {
+    const key = createSyncKey()
+    await sync({ key, since: 0, changes: [entryFromLookup(lookupFixture(), { now: 1000, id: 'w1' })] })
+    const ahead = await sync({ key, since: 1200, changes: [] })
+    assert.equal(ahead.status, 200)
+    assert.deepEqual({ ...ahead.body, epoch: undefined }, { cursor: 0, changes: [], more: false, reset: true, epoch: undefined })
+    const fresh = await sync({ key, since: 0, changes: [] })
+    assert.equal(fresh.body.changes.length, 1)
+    assert.equal(typeof fresh.body.epoch, 'string')
+
+    // A cursor from another database (its epoch differs) also starts over, even when it is small.
+    const elsewhere = await sync({ key, since: 1, epoch: 'another-database', changes: [] })
+    assert.equal(elsewhere.body.reset, true)
+    const same = await sync({ key, since: 1, epoch: fresh.body.epoch, changes: [] })
+    assert.equal(same.body.reset, undefined)
+  })
+
+  it('counts only new live records toward the cap', async () => {
+    const key = createSyncKey()
+    const space = spaceFor(key)
+    const insert = db.prepare('INSERT INTO sync_records (space, id, updated_at, seq, data) VALUES (?, ?, ?, ?, ?)')
+    const filler = JSON.stringify({ deletedAt: null })
+    db.exec('BEGIN')
+    for (let i = 0; i < 19_999; i += 1) insert.run(space, `f${i}`, 1, i + 1, filler)
+    db.exec('COMMIT')
+    const existing = entryFromLookup(lookupFixture(), { now: 1000, id: 'f0' })
+    const fresh = (id: string) => entryFromLookup(lookupFixture(), { now: 1000, id })
+    // Editing or deleting records that are already there always fits.
+    assert.equal((await sync({ key, since: 0, changes: [withPatch(existing, { note: 'x' }, 2000)] })).status, 200)
+    assert.equal((await sync({ key, since: 0, changes: [tombstone(fresh('f1'), 3000)] })).status, 200)
+    // f1 is deleted now, so two new records fit in the space it left.
+    assert.equal((await sync({ key, since: 0, changes: [fresh('n1'), fresh('n2')] })).status, 200)
+    const full = await sync({ key, since: 0, changes: [fresh('n3')] })
+    assert.equal(full.status, 413)
+    assert.equal(full.body.code, 'sync-full')
+  })
+
+  it('cleans up records before storing them', async () => {
+    const key = createSyncKey()
+    const entry = { ...entryFromLookup(lookupFixture(), { now: 1000, id: 'w1' }), links: [{ relation: 'synonym' }] }
+    delete (entry as Partial<StoredEntry>).easeFactor
+    assert.equal((await sync({ key, since: 0, changes: [entry] })).status, 200)
+    const [stored] = (await sync({ key, since: 0, changes: [] })).body.changes
+    assert.deepEqual(stored!.links, [])
+    assert.equal(stored!.easeFactor, 2.5)
   })
 
   it('never stores the code itself', async () => {

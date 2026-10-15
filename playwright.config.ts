@@ -11,6 +11,8 @@ export default defineConfig({
   timeout: 45_000,
   use: {
     baseURL: `http://127.0.0.1:${webPort}`,
+    // The tests read English labels; the app follows the browser language.
+    locale: 'en-US',
     trace: 'on-first-retry',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],

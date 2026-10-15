@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Grade, WordDetail } from '@shared/types'
 import { phraseCardFor, type PhraseCard } from '@shared/phrase'
@@ -76,7 +76,7 @@ function PhraseBack({ card, quiz }: { card: WordDetail; quiz: PhraseCard }) {
   return (
     <>
       {quiz.mode === 'cloze' && (
-        <p className="lemma text-3xl" dir={isRtl(card.language) ? 'rtl' : 'ltr'}>
+        <p className="lemma text-3xl" lang={card.language} dir={isRtl(card.language) ? 'rtl' : 'ltr'}>
           {quiz.answer}
         </p>
       )}
@@ -108,13 +108,31 @@ function PhraseBack({ card, quiz }: { card: WordDetail; quiz: PhraseCard }) {
 export function Review() {
   const { device, lexicon, ready } = useLexicon()
   const { t, languageName } = useI18n()
-  const [queue, setQueue] = useState<WordDetail[]>([])
-  const [index, setIndex] = useState(0)
+  // Ids of the cards still to go this visit. Each card is read fresh from the
+  // lexicon, so a sync that edits or deletes one shows up at once.
+  const [queueIds, setQueueIds] = useState<string[] | null>(null)
   const [flipped, setFlipped] = useState(false)
   const [done, setDone] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const cardRef = useRef<HTMLButtonElement>(null)
 
-  const card = queue[index]
+  useEffect(() => {
+    if (!ready) return
+    // Drawn once per visit, or again while nothing was due yet (say, until a
+    // first sync brings this device its cards).
+    if (queueIds !== null && (queueIds.length > 0 || done > 0)) return
+    const due = lexicon.reviewQueue().map((item) => item.id)
+    if (queueIds === null || due.length) setQueueIds(due)
+  }, [ready, lexicon, queueIds, done])
+
+  const live = useMemo(
+    () =>
+      (queueIds ?? [])
+        .map((id) => lexicon.detail(id))
+        .filter((item): item is WordDetail => item !== null),
+    [queueIds, lexicon],
+  )
+  const card = live[0]
+  const loading = queueIds === null
   const hints = card
     ? {
         again: previewInterval(recallStateFrom(card), 'again'),
@@ -124,20 +142,20 @@ export function Review() {
       }
     : null
 
-  // The queue is taken once per visit; grading changes the lexicon but not the cards already drawn.
-  useEffect(() => {
-    if (!ready || !loading) return
-    setQueue(lexicon.reviewQueue())
-    setLoading(false)
-  }, [ready, loading, lexicon])
-
   useEffect(() => {
     if (card) setFlipped(false)
   }, [card?.id])
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLInputElement) {
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      const target = event.target as HTMLElement | null
+      // Keys belong to whatever control has focus, except the card itself.
+      if (
+        target &&
+        target !== cardRef.current &&
+        target.closest('a, button, input, textarea, select, [contenteditable="true"], [role="dialog"]')
+      ) {
         return
       }
       if (event.key === ' ' || event.key === 'Enter') {
@@ -149,16 +167,16 @@ export function Review() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [flipped, card, queue, index])
+  })
 
   function grade(value: Grade) {
-    if (!card) return
+    if (!card || !queueIds) return
     device?.grade(card.id, value)
     setDone((n) => n + 1)
-    const remaining = queue.filter((_, i) => i !== index)
-    if (value === 'again') remaining.push(card)
-    setQueue(remaining)
-    setIndex(0)
+    const at = queueIds.indexOf(card.id)
+    const remaining = queueIds.filter((_, i) => i !== at)
+    if (value === 'again') remaining.push(card.id)
+    setQueueIds(remaining)
     setFlipped(false)
   }
 
@@ -191,17 +209,21 @@ export function Review() {
   return (
     <div className="mx-auto max-w-2xl">
       <p className="mb-4 text-sm text-muted">
-        {t('review.progress', { index: index + 1, total: queue.length, done })}
+        {t('review.progress', { index: 1, total: live.length, done })}
       </p>
       <div className="[perspective:1400px]">
         <button
+          ref={cardRef}
           type="button"
           onClick={() => setFlipped((value) => !value)}
           className={`card-face relative min-h-[340px] w-full rounded-3xl border border-rule bg-paper text-left shadow-[0_30px_60px_-40px_var(--wk-shadow)] ${
             flipped ? 'is-flipped' : ''
           }`}
         >
-          <div className="card-side absolute inset-0 flex flex-col items-center justify-center p-8">
+          <div
+            className="card-side absolute inset-0 flex flex-col items-center justify-center p-8"
+            aria-hidden={flipped}
+          >
             {quiz ? (
               <PhraseFront card={card} quiz={quiz} />
             ) : (
@@ -211,7 +233,7 @@ export function Review() {
                 </p>
                 <h1
                   className="lemma mt-3 text-center text-5xl sm:text-6xl"
-                  dir={isRtl(card.language) ? 'rtl' : 'ltr'}
+                  lang={card.language} dir={isRtl(card.language) ? 'rtl' : 'ltr'}
                 >
                   {card.displayLemma}
                 </h1>
@@ -220,7 +242,7 @@ export function Review() {
             )}
             <p className="mt-8 text-sm text-muted">{t('review.flip')}</p>
           </div>
-          <div className="card-side card-back absolute inset-0 overflow-auto p-8">
+          <div className="card-side card-back absolute inset-0 overflow-auto p-8" aria-hidden={!flipped}>
             {quiz ? (
               <PhraseBack card={card} quiz={quiz} />
             ) : (

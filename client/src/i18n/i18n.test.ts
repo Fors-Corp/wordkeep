@@ -48,3 +48,11 @@ describe('translations', () => {
     expect(capitalize(languageNameIn('ca', 'ca'), 'ca')).toBe('Català')
   })
 })
+
+describe('European Portuguese', () => {
+  it('uses the plural for zero and groups large numbers', () => {
+    expect(translator('pt').tp('home.reviewCards', 0)).toBe('Rever 0 cartões')
+    expect(translator('pt').tp('home.reviewCards', 1)).toBe('Rever 1 cartão')
+    expect(translator('de').tp('home.reviewCards', 12000)).toBe('12.000 Karten wiederholen')
+  })
+})

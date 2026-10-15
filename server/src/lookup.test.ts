@@ -2,7 +2,7 @@ import './test/db-env.ts'
 import assert from 'node:assert/strict'
 import { afterEach, describe, it } from 'node:test'
 import { clearLookupCache, lookupWord } from './lookup.ts'
-import { fetchNativeSenses } from './native-defs.ts'
+import { fetchNativeWiki } from './native-defs.ts'
 import { installDictionaryMock } from './test/fixtures.ts'
 
 describe('lookupWord', () => {
@@ -49,6 +49,6 @@ describe('lookupWord', () => {
   })
 
   it('skips native wiktionary for English', async () => {
-    assert.deepEqual(await fetchNativeSenses('happy', 'en'), [])
+    assert.deepEqual((await fetchNativeWiki('happy', 'en')).senses, [])
   })
 })

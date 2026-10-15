@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useI18n } from '../context/I18nContext'
+import { useLexicon } from '../context/LexiconContext'
 import { useStats } from '../context/StatsContext'
 import { AppLanguageMenu } from './AppLanguageMenu'
 import { LanguageSwitcher } from './LanguageSwitcher'
@@ -15,6 +16,7 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
 
 export function Layout() {
   const { stats } = useStats()
+  const { storageError } = useLexicon()
   const { t } = useI18n()
   const due = stats?.dueToday ?? 0
 
@@ -48,6 +50,11 @@ export function Layout() {
           <LanguageSwitcher />
         </div>
       </header>
+      {Boolean(storageError) && (
+        <p className="mb-6 rounded-2xl border border-accent px-4 py-3 text-sm text-accent" role="alert">
+          {t('storage.saveFailed')}
+        </p>
+      )}
       <WordTrailBar />
       <Outlet />
       <footer className="mt-16 border-t border-rule pt-4 text-sm text-muted">

@@ -7,6 +7,7 @@ import { ApiError } from '../lib/api'
 import { useLexicon } from '../context/LexiconContext'
 import { api } from '../lib/api'
 import { hashHue, isRtl, posLabel } from '../lib/format'
+import { errorText } from '../lib/errors'
 import { lookupHref } from '../lib/paths'
 
 function shuffle<T>(items: T[]): T[] {
@@ -22,10 +23,15 @@ function shuffle<T>(items: T[]): T[] {
   return copy
 }
 
+/** The pastel a matched pair shares; its text stays dark in both themes so it can be read. */
+function pairStyle(hue: number) {
+  return { background: `hsl(${hue} 40% 88%)`, borderColor: `hsl(${hue} 40% 45%)`, color: '#1c1712' }
+}
+
 export function Discover() {
   const { lookupLang, current } = useLanguage()
   const { device } = useLexicon()
-  const { t, languageName } = useI18n()
+  const { t, languageName, locale } = useI18n()
   const dictionaryName = current ? languageName(current.code, current.name) : languageName(lookupLang)
   const [round, setRound] = useState<PlayRound | null>(null)
   const [meanings, setMeanings] = useState<PlayCard[]>([])
@@ -35,6 +41,7 @@ export function Discover() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [kept, setKept] = useState<Record<string, string>>({})
+  const [keepFailed, setKeepFailed] = useState<Record<string, boolean>>({})
 
   async function loadRound() {
     setBusy(true)
@@ -43,6 +50,7 @@ export function Discover() {
     setPairs({})
     setPicked(null)
     setKept({})
+    setKeepFailed({})
     try {
       const next = await api.playRound(lookupLang)
       setRound(next)
@@ -52,9 +60,7 @@ export function Discover() {
       setError(
         err instanceof ApiError && err.status === 404
           ? t('discover.noBank', { lang: dictionaryName })
-          : err instanceof Error
-            ? err.message
-            : t('discover.failed'),
+          : errorText(err, t, t('discover.failed')),
       )
     } finally {
       setBusy(false)
@@ -100,12 +106,13 @@ export function Discover() {
     : 0
 
   async function keepCard(card: PlayCard) {
+    if (!device) return
+    setKeepFailed((current) => ({ ...current, [card.id]: false }))
     try {
-      if (!device) return
       const saved = device.keepLookup(await api.lookup(card.lemma, lookupLang))
       setKept((current) => ({ ...current, [card.id]: saved.id }))
     } catch {
-      /* the dictionary had no entry for it */
+      setKeepFailed((current) => ({ ...current, [card.id]: true }))
     }
   }
 
@@ -117,7 +124,7 @@ export function Discover() {
 
       {round && (
         <p className="mt-2 text-sm text-muted">
-          {t('discover.bank', { count: round.bankSize.toLocaleString(), paired: assignedCount })}
+          {t('discover.bank', { count: round.bankSize.toLocaleString(locale), paired: assignedCount })}
         </p>
       )}
 
@@ -155,6 +162,8 @@ export function Discover() {
                       <button
                         type="button"
                         onClick={() => onWord(card.id)}
+                        aria-pressed={selected}
+                        lang={lookupLang}
                         dir={isRtl(lookupLang) ? 'rtl' : 'ltr'}
                         className={`lemma w-full rounded-2xl border px-4 py-3 text-left text-xl ${
                           selected
@@ -165,7 +174,7 @@ export function Discover() {
                         }`}
                         style={
                           paired && !selected
-                            ? { background: `hsl(${hue} 40% 88%)`, borderColor: `hsl(${hue} 40% 55%)` }
+                            ? pairStyle(hue)
                             : undefined
                         }
                       >
@@ -203,7 +212,7 @@ export function Discover() {
                         className="w-full rounded-2xl border border-rule bg-paper px-4 py-3 text-left text-sm leading-relaxed disabled:cursor-default"
                         style={
                           owner
-                            ? { background: `hsl(${hue} 40% 88%)`, borderColor: `hsl(${hue} 40% 55%)` }
+                            ? pairStyle(hue)
                             : undefined
                         }
                       >
@@ -257,7 +266,7 @@ export function Discover() {
                     <Link
                       to={lookupHref(card.lemma, lookupLang)}
                       className="lemma text-xl"
-                      dir={isRtl(lookupLang) ? 'rtl' : 'ltr'}
+                      lang={lookupLang} dir={isRtl(lookupLang) ? 'rtl' : 'ltr'}
                     >
                       {card.lemma}
                     </Link>
@@ -268,13 +277,20 @@ export function Discover() {
                       {t('discover.kept')}
                     </Link>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => void keepCard(card)}
-                      className="text-sm text-accent"
-                    >
-                      {t('discover.keep')}
-                    </button>
+                    <span className="text-right">
+                      <button
+                        type="button"
+                        onClick={() => void keepCard(card)}
+                        className="text-sm text-accent"
+                      >
+                        {t('discover.keep')}
+                      </button>
+                      {keepFailed[card.id] && (
+                        <span className="block text-xs text-accent" role="status">
+                          {t('discover.keepFailed')}
+                        </span>
+                      )}
+                    </span>
                   )}
                 </li>
               ))}

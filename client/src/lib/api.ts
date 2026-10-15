@@ -35,7 +35,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return data
 }
 
-export type SyncResponse = { cursor: number; changes: StoredEntry[]; more: boolean }
+/** `reset` means the server's store was replaced: send everything again and read from the start. */
+export type SyncResponse = { cursor: number; changes: StoredEntry[]; more: boolean; reset?: boolean; epoch?: string }
+export type SyncRequest = { key: string; since: number; changes: StoredEntry[]; epoch?: string | null }
 
 export const api = {
   languages: () => request<Language[]>('/api/languages'),
@@ -56,8 +58,15 @@ export const api = {
     request<{ ok: boolean }>('/api/login', { method: 'POST', body: JSON.stringify({ key }) }),
   logout: () => request<{ ok: boolean }>('/api/logout', { method: 'POST' }),
   /** Sends records changed on this device and receives what other devices changed since `since`. */
-  sync: (body: { key: string; since: number; changes: StoredEntry[] }) =>
-    request<SyncResponse>('/api/sync', { method: 'POST', body: JSON.stringify(body) }),
+  sync: (body: SyncRequest) =>
+    request<SyncResponse>('/api/sync', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      // A hung request would hold the sync lock that every tab waits on.
+      signal: AbortSignal.timeout(30_000),
+    }),
   /** Words a self-hosted server stored before the lexicon moved to the device. */
   legacyExport: () => request<unknown>('/api/legacy/export'),
+  /** Tells the server the old words are saved on this device, so it stops handing them out. */
+  legacyAck: () => request<{ ok: boolean }>('/api/legacy/ack', { method: 'POST' }),
 }

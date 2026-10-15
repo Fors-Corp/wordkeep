@@ -1,4 +1,4 @@
-import { entryFromPhrase, normalizeLemma, type StoredEntry, type StoredLink } from './lexicon.ts'
+import { entryFromPhrase, entryId, normalizeLemma, type StoredEntry, type StoredLink } from './lexicon.ts'
 import { initialRecall } from './sm2.ts'
 import type { LinkRelation, PhraseAnalysis, PhraseToken } from './types.ts'
 
@@ -392,21 +392,16 @@ export const DEMO_PHRASE: PhraseAnalysis = {
 }
 
 
-/** Stable ids, so loading the samples twice (or on two synced devices) never duplicates them. */
-export function sampleId(...parts: string[]): string {
-  let a = 0x811c9dc5
-  let b = 0x01000193
-  for (const char of parts.join('\u0000')) {
-    const code = char.codePointAt(0) ?? 0
-    a = Math.imul(a ^ code, 0x01000193) >>> 0
-    b = Math.imul(b ^ code, 0x5bd1e995) >>> 0
-  }
-  return `sample-${a.toString(16).padStart(8, '0')}${b.toString(16).padStart(8, '0')}`
-}
-
+/**
+ * The sample entries. Their ids are the regular entry ids, so loading them
+ * twice, or on two synced devices, never duplicates them, and a sample word
+ * you also look up stays one entry. They carry `updatedAt: 0` ("never
+ * edited"), so any real change on another device, a review or a deletion,
+ * wins over a freshly loaded copy when devices sync.
+ */
 export function sampleEntries(now = Date.now()): StoredEntry[] {
   const entries = WORDS.map((word): StoredEntry => {
-    const id = sampleId('word', word.language, normalizeLemma(word.lemma, word.language))
+    const id = entryId(word.language, word.lemma)
     const own = (lemma: string, relation: LinkRelation): StoredLink => ({
       lemma,
       language: word.language,
@@ -445,7 +440,7 @@ export function sampleEntries(now = Date.now()): StoredEntry[] {
       archivedAt: null,
       ...initialRecall(now),
       createdAt: now,
-      updatedAt: now,
+      updatedAt: 0,
       deletedAt: null,
       forms: [],
       senses: [sense],
@@ -458,9 +453,6 @@ export function sampleEntries(now = Date.now()): StoredEntry[] {
       analysis: null,
     }
   })
-  const phrase = entryFromPhrase(DEMO_PHRASE, DEMO_PHRASE.translation, {
-    now: now + 1,
-    id: sampleId('phrase', DEMO_PHRASE.language, DEMO_PHRASE.text),
-  })
+  const phrase = { ...entryFromPhrase(DEMO_PHRASE, DEMO_PHRASE.translation, { now: now + 1 }), updatedAt: 0 }
   return [...entries, phrase]
 }

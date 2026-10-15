@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { getConnInfo } from '@hono/node-server/conninfo'
 import type { Context } from 'hono'
 import type { PhraseNotice } from '../../shared/types.ts'
 import { getStore } from './kv.ts'
@@ -29,17 +30,37 @@ export function sharedLimitsMissing(): boolean {
   return Boolean(process.env.VERCEL) && getStore().kind !== 'redis'
 }
 
+/** The address of the connecting socket, when the server runs on Node directly. */
+function socketAddress(c: Context): string {
+  try {
+    return getConnInfo(c).remote.address ?? ''
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * The visitor's IP address. Forwarding headers can be set by anyone, so they
+ * are only read where a known proxy writes them: Vercel and Fly set their
+ * own, and TRUST_PROXY=1 trusts the last x-forwarded-for hop (the one added
+ * by your reverse proxy).
+ */
+export function visitorIp(c: Context): string {
+  const first = (name: string) => c.req.header(name)?.split(',')[0]?.trim() ?? ''
+  const last = (name: string) => c.req.header(name)?.split(',').at(-1)?.trim() ?? ''
+  return (
+    (process.env.VERCEL ? first('x-real-ip') || first('x-vercel-forwarded-for') : '') ||
+    (process.env.FLY_APP_NAME ? first('fly-client-ip') : '') ||
+    (process.env.TRUST_PROXY === '1' ? last('x-forwarded-for') : '') ||
+    socketAddress(c) ||
+    'local'
+  )
+}
+
 /** A stable, non-reversible id for the visitor's IP address. */
 export function visitorId(c: Context): string {
-  const header = (name: string) => c.req.header(name)?.split(',')[0]?.trim() ?? ''
-  // Platform headers are only trusted on the platform that sets them.
-  const ip =
-    (process.env.VERCEL ? header('x-real-ip') || header('x-vercel-forwarded-for') : '') ||
-    (process.env.FLY_APP_NAME ? header('fly-client-ip') : '') ||
-    header('x-forwarded-for') ||
-    'local'
   const salt = process.env.WORDKEEP_AI_SALT ?? 'wordkeep'
-  return createHash('sha256').update(`${salt}:${ip}`).digest('hex').slice(0, 24)
+  return createHash('sha256').update(`${salt}:${visitorIp(c)}`).digest('hex').slice(0, 24)
 }
 
 function today(): string {

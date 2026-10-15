@@ -1,5 +1,6 @@
 import type { SenseDraft } from '../../shared/types.ts'
 import { cleanWiki, etymologyFrom } from './etymology.ts'
+import { escapeRegExp, isLangCode } from './params.ts'
 
 const UA = 'Wordkeep/1.0 (personal lexicon; local app)'
 
@@ -14,6 +15,7 @@ const WIKI_EDITION: Record<string, string> = {
 }
 
 function wikiLang(code: string): string {
+  if (!isLangCode(code)) return 'en'
   const base = (code.split('-')[0] ?? code).toLowerCase()
   return WIKI_EDITION[code.toLowerCase()] ?? WIKI_EDITION[base] ?? base
 }
@@ -32,7 +34,8 @@ function posFromHeading(heading: string): string {
   return ''
 }
 
-function isolateSection(wikitext: string, lang: string): string {
+function isolateSection(wikitext: string, code: string): string {
+  const lang = escapeRegExp(code)
   const patterns = [
     new RegExp(`^==\\s*\\{\\{lengua\\|${lang}\\}\\}\\s*==\\s*$`, 'im'),
     new RegExp(`^==\\s*\\{\\{langue\\|${lang}\\}\\}\\s*==\\s*$`, 'im'),
@@ -159,6 +162,3 @@ export async function fetchNativeWiki(
   }
 }
 
-export async function fetchNativeSenses(word: string, lang: string): Promise<SenseDraft[]> {
-  return (await fetchNativeWiki(word, lang)).senses
-}

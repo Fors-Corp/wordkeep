@@ -192,6 +192,18 @@ export function WordGraph({
   const wrapRef = useRef<HTMLDivElement>(null)
   const hostRef = useRef<HTMLDivElement>(null)
   const [noGl, setNoGl] = useState(false)
+  // Phones: one finger scrolls the page, two fingers turn and zoom the atlas.
+  const touch = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches === true
+  // The atlas is rebuilt only when what it shows changes, not on every new
+  // lexicon object (a sync status change, an edit to a note).
+  const signature = useMemo(
+    () =>
+      JSON.stringify([
+        nodes.map((node) => [node.id, node.label, node.saved, node.kind, node.wordId]),
+        edges.map((edge) => [edge.source, edge.target, edge.relation]),
+      ]),
+    [nodes, edges],
+  )
 
   const trimmed = useMemo(() => {
     const center = nodes.find((node) => node.kind === 'center')
@@ -205,7 +217,8 @@ export function WordGraph({
       nodes: [center, ...ranked],
       edges: edges.filter((edge) => keep.has(edge.source) && keep.has(edge.target)),
     }
-  }, [nodes, edges, cap])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signature, cap])
 
   useEffect(() => {
     const host = hostRef.current
@@ -213,6 +226,7 @@ export function WordGraph({
     if (!host || !wrap || !trimmed.nodes.length) return
 
     const width = host.clientWidth || 640
+    const viewHeight = host.clientHeight || height
     const ink = cssVar(wrap, '--wk-ink', '#f0e8dc')
     const muted = cssVar(wrap, '--wk-muted', '#b3a99b')
     const paper = cssVar(wrap, '--wk-paper-2', '#201b16')
@@ -221,7 +235,7 @@ export function WordGraph({
     const scene = new THREE.Scene()
     scene.background = new THREE.Color(paper)
 
-    const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 800)
+    const camera = new THREE.PerspectiveCamera(50, width / viewHeight, 0.1, 800)
     camera.position.set(48, 32, 88)
 
     let renderer: THREE.WebGLRenderer
@@ -233,12 +247,11 @@ export function WordGraph({
       return
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    renderer.setSize(width, height)
+    renderer.setSize(width, viewHeight)
     renderer.domElement.style.display = 'block'
     renderer.domElement.style.width = '100%'
-    renderer.domElement.style.height = `${height}px`
+    renderer.domElement.style.height = '100%'
     renderer.domElement.style.userSelect = 'none'
-    renderer.domElement.style.touchAction = 'none'
     renderer.domElement.setAttribute('aria-label', t('graph.aria'))
     host.replaceChildren(renderer.domElement)
 
@@ -251,6 +264,11 @@ export function WordGraph({
     controls.minDistance = 24
     controls.maxDistance = 480
     controls.target.set(0, 0, 0)
+    if (touch) {
+      controls.touches = { ONE: null as unknown as THREE.TOUCH, TWO: THREE.TOUCH.DOLLY_ROTATE }
+    }
+    // OrbitControls claims every touch; let a one-finger drag scroll the page on phones.
+    renderer.domElement.style.touchAction = touch ? 'pan-y' : 'none'
 
     scene.add(new THREE.AmbientLight(0xffffff, 0.55))
     const key = new THREE.DirectionalLight(0xffffff, 0.9)
@@ -385,9 +403,10 @@ export function WordGraph({
 
     const observer = new ResizeObserver(() => {
       const next = host.clientWidth || width
-      camera.aspect = next / height
+      const nextHeight = host.clientHeight || viewHeight
+      camera.aspect = next / nextHeight
       camera.updateProjectionMatrix()
-      renderer.setSize(next, height)
+      renderer.setSize(next, nextHeight)
     })
     observer.observe(host)
 
@@ -426,10 +445,12 @@ export function WordGraph({
         line.geometry.dispose()
         ;(line.material as THREE.Material).dispose()
       }
+      // Browsers allow only a few live WebGL contexts; give this one back now.
+      renderer.forceContextLoss()
       renderer.dispose()
       host.replaceChildren()
     }
-  }, [trimmed, height, navigate, onLookup, theme, t])
+  }, [trimmed, height, navigate, onLookup, theme, t, touch])
 
   if (!nodes.length) {
     return (
@@ -471,10 +492,10 @@ export function WordGraph({
       <div
         ref={hostRef}
         className="cursor-grab active:cursor-grabbing"
-        style={{ height, touchAction: 'none', userSelect: 'none' }}
+        style={{ height: `min(${height}px, 60svh)`, touchAction: touch ? 'pan-y' : 'none', userSelect: 'none' }}
       />
       <p className="border-t border-rule px-3 py-1.5 text-center text-xs text-muted">
-        {t('graph.hint')}
+        {t(touch ? 'graph.hintTouch' : 'graph.hint')}
       </p>
       <div className="flex flex-wrap gap-3 border-t border-rule px-3 py-2 text-xs uppercase tracking-wide text-muted">
         <span className="flex items-center gap-1">

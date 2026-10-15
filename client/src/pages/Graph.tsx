@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { WordGraph } from '../components/WordGraph'
+import { LazyWordGraph as WordGraph } from '../components/LazyWordGraph'
 import { useI18n } from '../context/I18nContext'
 import { useLexicon } from '../context/LexiconContext'
 
@@ -10,6 +10,10 @@ export function GraphPage() {
   const { t } = useI18n()
   const { lexicon } = useLexicon()
   const [mode, setMode] = useState<'word' | 'lexicon'>(id ? 'word' : 'lexicon')
+  // Follow the address: opening /graph/:id or /graph from a link picks the matching view.
+  useEffect(() => {
+    setMode(id ? 'word' : 'lexicon')
+  }, [id])
   const words = useMemo(() => lexicon.list(), [lexicon])
   const payload = useMemo(() => lexicon.graph(mode === 'word' ? id : undefined), [lexicon, mode, id])
 
@@ -61,7 +65,7 @@ export function GraphPage() {
               const next = event.target.value
               if (next) navigate(`/graph/${next}`)
             }}
-            className="mt-1 w-full rounded-xl border border-rule bg-paper px-3 py-2"
+            className="mt-1 w-full rounded-xl border border-rule bg-paper px-3 py-2 text-base sm:text-sm"
           >
             <option value="">{t('graph.choose')}</option>
             {words.map((word) => (

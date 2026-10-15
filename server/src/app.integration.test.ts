@@ -51,11 +51,39 @@ describe('API integration', () => {
     }
   })
 
-  it('play bank reports size for a language', async () => {
-    const res = await app.request('/api/play/bank?lang=en')
-    assert.equal(res.status, 200)
-    const body = (await res.json()) as { bankSize: number }
-    assert.equal(typeof body.bankSize, 'number')
+  it('rejects language codes that are not plain codes', async () => {
+    const attacks = [
+      'evil.example/x?',
+      '169.254.169.254#',
+      'en.wiktionary.org#|^(\\w+\\s?)+$',
+      '../../../../etc/passwd',
+    ]
+    for (const lang of attacks) {
+      for (const path of ['/api/lookup?q=cat&lang=', '/api/play/round?lang=', '/api/phrase/analyze?q=a%20cat&lang=']) {
+        const res = await app.request(path + encodeURIComponent(lang))
+        assert.equal(res.status, 400, path + lang)
+        assert.equal((await json(res)).code, 'bad-lang')
+      }
+    }
+    const suggest = await app.request(`/api/suggest?q=cat&ui=${encodeURIComponent('../x')}`)
+    assert.equal(suggest.status, 400)
+  })
+
+  it('rejects overlong lookups and oversized bodies', async () => {
+    const long = await app.request(`/api/lookup?q=${'a'.repeat(200)}&lang=en`)
+    assert.equal(long.status, 400)
+    assert.equal((await json(long)).code, 'query-too-long')
+
+    const big = await app.request('/api/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ key: 'x'.repeat(200_000) }),
+    })
+    assert.equal(big.status, 413)
+  })
+
+  it('no longer serves the unused play bank route', async () => {
+    assert.equal((await app.request('/api/play/bank?lang=en')).status, 404)
   })
 })
 
@@ -85,7 +113,13 @@ describe('legacy export', () => {
         ['w1'],
       )
       assert.equal(body.senses.length, 1)
+
+      // Once a device confirms it saved them, they are not handed out again.
+      assert.equal((await app.request('/api/legacy/ack', { method: 'POST' })).status, 200)
+      const after = (await (await app.request('/api/legacy/export')).json()) as { words: unknown[] }
+      assert.deepEqual(after.words, [])
     } finally {
+      db.exec('DROP TABLE IF EXISTS legacy_handover')
       db.exec('DROP TABLE word_links')
       db.exec('DROP TABLE senses')
       db.exec('DROP TABLE words')

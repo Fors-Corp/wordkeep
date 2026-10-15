@@ -5,6 +5,7 @@ import { PhraseAnalysisView } from '../components/PhraseAnalysis'
 import { FormsLine } from '../components/SenseExtras'
 import { SenseList } from '../components/SenseList'
 import { useI18n } from '../context/I18nContext'
+import { intlLocale } from '../i18n'
 import { useLanguage } from '../context/LanguageContext'
 import { useLexicon } from '../context/LexiconContext'
 import { useWordTrail } from '../context/WordTrailContext'
@@ -25,7 +26,7 @@ function systemLanguage(): string {
 
 export function Home() {
   const { current } = useLanguage()
-  const { t, tp, languageName } = useI18n()
+  const { t, tp, languageName, locale } = useI18n()
   const { device, lexicon, stats, recent, ready } = useLexicon()
   const { visit } = useWordTrail()
   const {
@@ -50,6 +51,7 @@ export function Home() {
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
   const boxRef = useRef<HTMLFormElement>(null)
+  const typedRef = useRef(false)
   const uiLang = systemLanguage()
   const lookupKeptId = lookup ? lexicon.findId(lookup.displayLemma, lookup.language) : null
   const phraseKeptId = phrase ? lexicon.findId(phrase.text, phrase.language) : null
@@ -74,28 +76,39 @@ export function Home() {
       setOpen(false)
       return
     }
+    let cancelled = false
     const timer = window.setTimeout(() => {
       api
         .suggest(q, current?.code || 'en', uiLang)
         .then((result) => {
+          // A newer keystroke (or a pick) made this answer stale.
+          if (cancelled) return
           setSuggest(result)
           setActive(0)
-          setOpen(result.suggestions.length > 0)
+          // Only reopen while the reader is typing, not after picking a suggestion.
+          setOpen(typedRef.current && result.suggestions.length > 0)
         })
-        .catch(() => setSuggest(emptySuggest))
+        .catch(() => {
+          if (!cancelled) setSuggest(emptySuggest)
+        })
     }, 140)
-    return () => window.clearTimeout(timer)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
   }, [query, current?.code, uiLang, isPhrase])
 
   useEffect(() => {
-    function onDoc(event: MouseEvent) {
+    // pointerdown, not mousedown: iOS Safari fires no mouse events for taps on plain areas.
+    function onDoc(event: PointerEvent) {
       if (!boxRef.current?.contains(event.target as Node)) setOpen(false)
     }
-    document.addEventListener('mousedown', onDoc)
-    return () => document.removeEventListener('mousedown', onDoc)
+    document.addEventListener('pointerdown', onDoc)
+    return () => document.removeEventListener('pointerdown', onDoc)
   }, [])
 
   function pick(lemma: string, lang: string) {
+    typedRef.current = false
     setOpen(false)
     choose(lemma, lang)
   }
@@ -150,6 +163,7 @@ export function Home() {
           <input
             value={query}
             onChange={(event) => {
+              typedRef.current = true
               setQuery(event.target.value)
               setPrimary(0)
               setOpen(true)
@@ -198,7 +212,7 @@ export function Home() {
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => pick(item.lemma, item.language)}
                   >
-                    <span className="lemma text-lg" dir={isRtl(item.language) ? 'rtl' : 'ltr'}>
+                    <span className="lemma text-lg" lang={item.language} dir={isRtl(item.language) ? 'rtl' : 'ltr'}>
                       {item.lemma}
                     </span>
                     <span className="text-xs text-muted">
@@ -249,7 +263,9 @@ export function Home() {
           {!isPhrase && suggest.detected.length > 0 && (
             <span className="mr-2 text-gold">
               {t('home.looksLike', {
-                languages: suggest.detected.map((item) => languageName(item.code, item.name)).join(', '),
+                languages: new Intl.ListFormat(intlLocale(locale), { type: 'conjunction' }).format(
+                  suggest.detected.map((item) => languageName(item.code, item.name)),
+                ),
               })}
             </span>
           )}
@@ -276,7 +292,7 @@ export function Home() {
         {phrase && (
           <article className="mt-8 rounded-3xl border border-rule bg-paper p-5 shadow-[0_20px_50px_-32px_var(--wk-shadow)]">
             <div className="mb-4 flex flex-wrap items-baseline gap-3">
-              <h2 className="lemma text-3xl" dir={isRtl(phrase.language) ? 'rtl' : 'ltr'}>
+              <h2 className="lemma text-3xl" lang={phrase.language} dir={isRtl(phrase.language) ? 'rtl' : 'ltr'}>
                 {phrase.text}
               </h2>
               <span className="rounded-full bg-chip px-2 py-0.5 text-xs uppercase tracking-wide text-muted">
@@ -303,7 +319,7 @@ export function Home() {
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
                 placeholder={t('home.mnemonicPhrase')}
-                className="h-16 w-full rounded-xl border border-rule bg-paper-2 p-3 text-sm outline-none"
+                className="h-16 w-full rounded-xl border border-rule bg-paper-2 p-3 text-base outline-none sm:text-sm"
               />
             </label>
             {saveError && <p className="mt-2 text-sm text-accent">{saveError}</p>}
@@ -321,7 +337,7 @@ export function Home() {
         {lookup && (
           <article className="mt-8 rounded-3xl border border-rule bg-paper p-5 shadow-[0_20px_50px_-32px_var(--wk-shadow)]">
             <div className="flex flex-wrap items-baseline gap-3">
-              <h2 className="lemma text-4xl" dir={isRtl(lookup.language) ? 'rtl' : 'ltr'}>
+              <h2 className="lemma text-4xl" lang={lookup.language} dir={isRtl(lookup.language) ? 'rtl' : 'ltr'}>
                 {lookup.displayLemma}
               </h2>
               {lookup.phonetic && <span className="text-muted">{lookup.phonetic}</span>}
@@ -382,7 +398,7 @@ export function Home() {
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
                 placeholder={t('home.mnemonicWordHint')}
-                className="h-16 w-full rounded-xl border border-rule bg-paper-2 p-3 text-sm outline-none"
+                className="h-16 w-full rounded-xl border border-rule bg-paper-2 p-3 text-base outline-none sm:text-sm"
               />
             </label>
             {saveError && <p className="mt-2 text-sm text-accent">{saveError}</p>}
@@ -436,7 +452,7 @@ export function Home() {
                   className="block rounded-2xl border border-rule bg-paper px-4 py-3 hover:border-accent"
                 >
                   <div className="flex items-baseline justify-between gap-3">
-                    <span className="lemma text-xl" dir={isRtl(word.language) ? 'rtl' : 'ltr'}>
+                    <span className="lemma text-xl" lang={word.language} dir={isRtl(word.language) ? 'rtl' : 'ltr'}>
                       {word.displayLemma}
                     </span>
                     <span className="font-mono text-xs uppercase text-muted">
@@ -444,7 +460,7 @@ export function Home() {
                     </span>
                   </div>
                   <p className="mt-1 line-clamp-2 text-sm text-muted">{word.gloss}</p>
-                  <p className="mt-1 text-xs text-gold">{formatDue(word.dueAt, undefined, t)}</p>
+                  <p className="mt-1 text-xs text-gold">{formatDue(word.dueAt, undefined, t, intlLocale(locale))}</p>
                 </Link>
               </li>
             ))}
