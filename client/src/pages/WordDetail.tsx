@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import type { GraphPayload, WordDetail } from '@shared/types'
+import { PhraseAnalysisView } from '../components/PhraseAnalysis'
 import { FormsLine } from '../components/SenseExtras'
 import { SenseList } from '../components/SenseList'
 import { WordGraph } from '../components/WordGraph'
@@ -8,7 +9,7 @@ import { useStats } from '../context/StatsContext'
 import { useWordTrail } from '../context/WordTrailContext'
 import { api } from '../lib/api'
 import { keptHref, lookupHref } from '../lib/paths'
-import { formatDue, isRtl, statusLabel } from '../lib/format'
+import { explainLanguage, formatDue, isRtl, statusLabel } from '../lib/format'
 
 export function WordPage() {
   const { id = '' } = useParams()
@@ -20,6 +21,7 @@ export function WordPage() {
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [reanalyzing, setReanalyzing] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -56,6 +58,19 @@ export function WordPage() {
     }
   }
 
+  async function reanalyze() {
+    if (!word) return
+    setReanalyzing(true)
+    setError('')
+    try {
+      setWord(await api.reanalyze(word.id, explainLanguage()))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Analysis failed')
+    } finally {
+      setReanalyzing(false)
+    }
+  }
+
   async function toggleArchive() {
     if (!word) return
     setWord(await api.patch(word.id, { archived: !word.archivedAt }))
@@ -72,39 +87,64 @@ export function WordPage() {
 
   if (error && !word) return <p className="text-accent">{error}</p>
   if (!word) return <p className="text-muted">Loading…</p>
+  const isPhrase = word.kind === 'phrase'
 
   return (
     <article className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr]">
       <div>
         <p className="text-xs uppercase tracking-[0.18em] text-gold">
+          {isPhrase ? 'Phrase · ' : ''}
           {word.languageName} · {statusLabel(word.status)} · {formatDue(word.dueAt)}
         </p>
-        <h1 className="lemma mt-2 text-5xl sm:text-6xl" dir={isRtl(word.language) ? 'rtl' : 'ltr'}>
+        <h1
+          className={`lemma mt-2 ${isPhrase ? 'text-4xl sm:text-5xl' : 'text-5xl sm:text-6xl'}`}
+          dir={isRtl(word.language) ? 'rtl' : 'ltr'}
+        >
           {word.displayLemma}
         </h1>
+        {isPhrase && (
+          <div className="mt-6">
+            {word.analysis ? (
+              <PhraseAnalysisView analysis={word.analysis} />
+            ) : (
+              <p className="text-muted">{word.gloss}</p>
+            )}
+            <button
+              type="button"
+              onClick={() => void reanalyze()}
+              disabled={reanalyzing}
+              className="mt-4 rounded-full border border-rule px-4 py-2 text-sm disabled:opacity-50"
+            >
+              {reanalyzing ? 'Analyzing…' : 'Re-analyze grammar'}
+            </button>
+            {error && <p className="mt-2 text-sm text-accent">{error}</p>}
+          </div>
+        )}
         {word.phonetic && <p className="mt-2 text-lg text-muted">{word.phonetic}</p>}
         <FormsLine forms={word.forms} />
 
         {word.etymology && (
           <blockquote className="mt-6 border-l-2 border-gold pl-4 leading-relaxed text-muted">
-            <span className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-gold">
+            <span className="mb-1 block text-xs uppercase tracking-[0.18em] text-gold">
               Etymology
             </span>
             {word.etymology}
           </blockquote>
         )}
 
-        <div className="mt-8">
-          <SenseList
-            senses={word.senses}
-            language={word.language}
-            primaryId={word.primarySenseId}
-            onPick={async (_index, sense) => {
-              if (!sense.id) return
-              setWord(await api.patch(word.id, { primarySenseId: sense.id }))
-            }}
-          />
-        </div>
+        {!isPhrase && (
+          <div className="mt-8">
+            <SenseList
+              senses={word.senses}
+              language={word.language}
+              primaryId={word.primarySenseId}
+              onPick={async (_index, sense) => {
+                if (!sense.id) return
+                setWord(await api.patch(word.id, { primarySenseId: sense.id }))
+              }}
+            />
+          </div>
+        )}
 
         <label className="mt-8 block">
           <span className="mb-2 block text-xs uppercase tracking-[0.16em] text-muted">

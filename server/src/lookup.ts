@@ -5,7 +5,7 @@ import { languageName } from './languages.ts'
 import { fetchNativeWiki } from './native-defs.ts'
 import { detectLanguages, suggestWords } from './suggest.ts'
 
-type FreeSense = {
+export type FreeSense = {
   definition?: string
   examples?: string[]
   synonyms?: string[]
@@ -14,7 +14,7 @@ type FreeSense = {
   translations?: Array<{ language?: { code?: string; name?: string }; word?: string }>
 }
 
-type FreeEntry = {
+export type FreeEntry = {
   language?: { code?: string; name?: string }
   partOfSpeech?: string
   pronunciations?: Array<{ type?: string; text?: string }>
@@ -24,7 +24,7 @@ type FreeEntry = {
   senses?: FreeSense[]
 }
 
-type FreeResponse = {
+export type FreeResponse = {
   word?: string
   entries?: FreeEntry[]
 }
@@ -177,7 +177,7 @@ function collectTranslations(entries: FreeEntry[], originLang: string): Translat
   return [...byLanguage.values()]
 }
 
-async function fetchFreeDictionary(word: string, lang: string): Promise<FreeResponse | null> {
+export async function fetchFreeDictionary(word: string, lang: string): Promise<FreeResponse | null> {
   const url = `https://freedictionaryapi.com/api/v1/entries/${encodeURIComponent(lang)}/${encodeURIComponent(word)}?translations=true`
   const res = await fetch(url, {
     headers: { Accept: 'application/json', 'User-Agent': 'Wordkeep/1.0' },

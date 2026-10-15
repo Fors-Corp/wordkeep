@@ -167,7 +167,7 @@ export function Discover() {
                       >
                         {card.lemma}
                         {card.partOfSpeech && (
-                          <span className="ml-2 font-sans text-[11px] uppercase tracking-wide opacity-70">
+                          <span className="ml-2 font-sans text-xs uppercase tracking-wide opacity-70">
                             {card.partOfSpeech}
                           </span>
                         )}

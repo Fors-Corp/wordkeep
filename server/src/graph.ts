@@ -1,4 +1,4 @@
-import type { GraphPayload, LinkRelation } from '../../shared/types.ts'
+import type { GraphNode, GraphPayload, LinkRelation } from '../../shared/types.ts'
 import { db } from './db.ts'
 import { allActiveWordRows, getWord, normalizeLemma } from './words.ts'
 
@@ -23,7 +23,20 @@ export function wordGraph(centerId?: string): GraphPayload {
       },
     ]
     const edges: GraphPayload['edges'] = []
+    const phraseIds = new Set(
+      (db.prepare(`SELECT id FROM words WHERE kind = 'phrase'`).all() as Array<{ id: string }>).map(
+        (row) => row.id,
+      ),
+    )
     const seenNode = new Set<string>([centerNodeId])
+
+    function neighborKind(relation: LinkRelation, toWordId: string | null): GraphNode['kind'] {
+      if (relation === 'phrase') {
+        if (toWordId && phraseIds.has(toWordId)) return 'phrase'
+        return toWordId ? 'saved' : 'related'
+      }
+      return relation
+    }
     const seenEdge = new Set<string>()
 
     function addNeighbor(
@@ -36,12 +49,7 @@ export function wordGraph(centerId?: string): GraphPayload {
       const id = nodeIdFor(toWordId, lemma, language)
       if (!seenNode.has(id)) {
         seenNode.add(id)
-        const kind: GraphPayload['nodes'][number]['kind'] =
-          relation === 'synonym' || relation === 'antonym' || relation === 'translation' || relation === 'related'
-            ? relation
-            : toWordId
-              ? 'saved'
-              : 'related'
+        const kind = neighborKind(relation, toWordId)
         nodes.push({
           id,
           label: lemma,
@@ -72,7 +80,7 @@ export function wordGraph(centerId?: string): GraphPayload {
     languageName: row.language_name,
     saved: true,
     wordId: row.id,
-    kind: 'saved' as const,
+    kind: row.kind === 'phrase' ? ('phrase' as const) : ('saved' as const),
   }))
   const byKey = new Map(
     words.map((row) => [`${row.language}:${normalizeLemma(row.display_lemma, row.language)}`, row.id]),
@@ -93,21 +101,46 @@ export function wordGraph(centerId?: string): GraphPayload {
 
   const links = db
     .prepare(
-      'SELECT from_word_id, to_word_id, to_lemma, to_language, relation FROM word_links',
+      'SELECT from_word_id, to_word_id, to_lemma, to_language, to_language_name, relation FROM word_links',
     )
     .all() as Array<{
     from_word_id: string
     to_word_id: string | null
     to_lemma: string
     to_language: string
+    to_language_name: string
     relation: LinkRelation
   }>
+
+  const phraseIds = new Set(words.filter((row) => row.kind === 'phrase').map((row) => row.id))
 
   for (const link of links) {
     const targetId =
       link.to_word_id ?? byKey.get(`${link.to_language}:${link.to_lemma}`) ?? null
-    if (!targetId) continue
-    pushEdge(link.from_word_id, targetId, link.relation || 'translation')
+    if (targetId) {
+      pushEdge(link.from_word_id, targetId, link.relation || 'translation')
+      continue
+    }
+    // Words of a kept phrase show up even when they were never kept themselves.
+    if (link.relation !== 'phrase' || !phraseIds.has(link.from_word_id)) continue
+    const ghostId = `ghost:${link.to_language}:${link.to_lemma}`
+    if (!nodeIds.has(ghostId)) {
+      nodeIds.add(ghostId)
+      nodes.push({
+        id: ghostId,
+        label: link.to_lemma,
+        language: link.to_language,
+        languageName: link.to_language_name,
+        saved: false,
+        wordId: null,
+        kind: 'word',
+      })
+    }
+    const source = `word:${link.from_word_id}`
+    const key = [source, ghostId, 'phrase'].sort().join('|')
+    if (edgeSeen.has(key)) continue
+    edgeSeen.add(key)
+    edges.push({ source, target: ghostId, relation: 'phrase' })
   }
 
   const senseRows = db

@@ -6,6 +6,11 @@ import { api } from '../lib/api'
 import { formatDue, isRtl, statusLabel } from '../lib/format'
 
 const FILTERS = ['all', 'due', 'new', 'learning', 'review', 'mastered', 'archived'] as const
+const KINDS = [
+  { value: '', label: 'words & phrases' },
+  { value: 'word', label: 'words' },
+  { value: 'phrase', label: 'phrases' },
+] as const
 
 export function Lexicon() {
   const { languages } = useLanguage()
@@ -16,19 +21,26 @@ export function Lexicon() {
   const q = params.get('q') ?? ''
   const status = params.get('status') ?? 'all'
   const language = params.get('language') ?? ''
+  const kind = params.get('kind') ?? ''
 
-  useEffect(() => {
+  function currentQuery(): Record<string, string | undefined> {
     const query: Record<string, string | undefined> = {
       q: q || undefined,
       language: language || undefined,
+      kind: kind || undefined,
     }
     if (status === 'due') query.due = 'today'
     else if (status !== 'all') query.status = status
+    return query
+  }
+
+  useEffect(() => {
     api
-      .words(query)
+      .words(currentQuery())
       .then(setWords)
       .catch((err: Error) => setError(err.message))
-  }, [q, status, language])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, status, language, kind])
 
   async function downloadBackup() {
     setBackupBusy('export')
@@ -55,13 +67,7 @@ export function Lexicon() {
     try {
       const backup = JSON.parse(await file.text()) as unknown
       await api.importLexicon(backup, mode)
-      const query: Record<string, string | undefined> = {
-        q: q || undefined,
-        language: language || undefined,
-      }
-      if (status === 'due') query.due = 'today'
-      else if (status !== 'all') query.status = status
-      setWords(await api.words(query))
+      setWords(await api.words(currentQuery()))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import failed')
     } finally {
@@ -91,7 +97,7 @@ export function Lexicon() {
           <input
             value={q}
             onChange={(event) => update({ q: event.target.value })}
-            placeholder="Search kept words"
+            placeholder="Search kept words and phrases"
             className="w-full max-w-xs rounded-full border border-rule bg-paper px-4 py-2 text-sm outline-none"
           />
           <button
@@ -138,6 +144,22 @@ export function Lexicon() {
         ))}
       </div>
 
+      <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="Entry type">
+        {KINDS.map((item) => (
+          <button
+            key={item.value}
+            type="button"
+            aria-pressed={kind === item.value}
+            onClick={() => update({ kind: item.value })}
+            className={`rounded-full px-3 py-1 text-xs ${
+              kind === item.value ? 'bg-ink text-paper' : 'bg-chip text-muted'
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
       {(usedLangs.length > 1 || language) && (
         <div className="mb-6 flex flex-wrap gap-2">
           <button
@@ -168,7 +190,7 @@ export function Lexicon() {
 
       {words.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-rule px-4 py-12 text-center text-muted">
-          Nothing here yet. Introduce a word and keep it for recall.
+          Nothing here yet. Introduce a word or phrase and keep it for recall.
         </p>
       ) : (
         <ul className="divide-y divide-rule rounded-3xl border border-rule bg-paper">
@@ -178,11 +200,19 @@ export function Lexicon() {
                 to={`/words/${word.id}`}
                 className="flex flex-wrap items-baseline gap-3 px-4 py-3 hover:bg-paper-2"
               >
-                <span className="lemma min-w-32 text-2xl" dir={isRtl(word.language) ? 'rtl' : 'ltr'}>
+                <span
+                  className={`lemma min-w-32 ${word.kind === 'phrase' ? 'text-xl' : 'text-2xl'}`}
+                  dir={isRtl(word.language) ? 'rtl' : 'ltr'}
+                >
                   {word.displayLemma}
                 </span>
-                <span className="flex-1 text-sm text-muted line-clamp-1">{word.gloss}</span>
-                <span className="font-mono text-[10px] uppercase text-gold">{word.language}</span>
+                {word.kind === 'phrase' && (
+                  <span className="rounded-full bg-chip px-2 py-0.5 text-xs uppercase tracking-wide text-phrase">
+                    phrase
+                  </span>
+                )}
+                <span className="min-w-48 flex-1 text-sm text-muted line-clamp-2 sm:line-clamp-1">{word.gloss}</span>
+                <span className="font-mono text-xs uppercase text-gold">{word.language}</span>
                 <span className="text-xs text-muted">{statusLabel(word.status)}</span>
                 <span className="text-xs text-accent">{formatDue(word.dueAt)}</span>
               </Link>

@@ -113,6 +113,8 @@ ensureColumn('senses', 'antonyms_json', 'TEXT')
 ensureColumn('senses', 'tags_json', 'TEXT')
 ensureColumn('senses', 'examples_json', 'TEXT')
 ensureColumn('words', 'forms_json', 'TEXT')
+ensureColumn('words', 'kind', "TEXT NOT NULL DEFAULT 'word'")
+ensureColumn('words', 'analysis_json', 'TEXT')
 
 try {
   db.exec(`

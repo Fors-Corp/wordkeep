@@ -34,7 +34,7 @@ export function GraphPage() {
           <h1 className="lemma text-4xl">Atlas</h1>
           <p className="mt-2 max-w-xl text-sm text-muted">
             Drag to rotate the 3D atlas so overlapping links separate. Green is synonym, dashed
-            terracotta antonym, gold translation, dotted slate related. Labels are not selectable.
+            terracotta antonym, gold translation, dotted slate related, olive phrase. Labels are not selectable.
             Click a node to open it.
           </p>
         </div>

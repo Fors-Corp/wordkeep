@@ -2,11 +2,13 @@ import { Hono, type Context } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { cors } from 'hono/cors'
 import { secureHeaders } from 'hono/secure-headers'
-import type { Grade, KeepWordInput } from '../../shared/types.ts'
+import type { Grade, KeepPhraseInput, KeepWordInput } from '../../shared/types.ts'
+import { visitorId } from './ai-limits.ts'
 import { exportLexicon, importLexicon } from './backup.ts'
 import { wordGraph } from './graph.ts'
 import { getLanguages } from './languages.ts'
 import { lookupWord } from './lookup.ts'
+import { PhraseInputError, analyzePhrase, phraseGloss } from './phrase.ts'
 import { buildRound, getBank } from './play.ts'
 import { suggestWords } from './suggest.ts'
 import {
@@ -15,11 +17,14 @@ import {
   getWord,
   gradeWord,
   insertFromLookup,
+  insertPhrase,
   listWords,
   recentWords,
   reviewQueue,
   stats,
+  updatePhraseAnalysis,
   updateWord,
+  wordKind,
 } from './words.ts'
 
 export const app = new Hono()
@@ -64,7 +69,7 @@ app.use('/api/*', async (c, next) => {
 
 const GRADES: Grade[] = ['again', 'hard', 'good', 'easy']
 
-app.get('/api/health', (c) => c.json({ ok: true, version: '1.0.1' }))
+app.get('/api/health', (c) => c.json({ ok: true, version: '1.2.0' }))
 
 app.get('/api/session', (c) =>
   c.json({ ok: true, locked: Boolean(accessKey), signedIn: isSignedIn(c) }),
@@ -119,6 +124,60 @@ app.get('/api/lookup', async (c) => {
   }
 })
 
+function phraseError(c: Context, error: unknown) {
+  if (error instanceof PhraseInputError) return c.json({ error: error.message }, 400)
+  const message = error instanceof Error ? error.message : 'Phrase analysis failed'
+  return c.json({ error: message }, 502)
+}
+
+app.get('/api/phrase/analyze', async (c) => {
+  const q = c.req.query('q')?.trim()
+  const lang = c.req.query('lang')?.trim() || 'en'
+  const explain = c.req.query('explain')?.trim() || 'en'
+  if (!q) return c.json({ error: 'Missing q' }, 400)
+  try {
+    return c.json(await analyzePhrase(q, lang, explain, { visitor: visitorId(c) }))
+  } catch (error) {
+    return phraseError(c, error)
+  }
+})
+
+app.post('/api/phrases', async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as Partial<KeepPhraseInput>
+  const text = body.text?.trim()
+  const lang = body.lang?.trim()
+  if (!text || !lang) return c.json({ error: 'text and lang are required' }, 400)
+  try {
+    const analysis = await analyzePhrase(text, lang, body.explain?.trim() || 'en', {
+      visitor: visitorId(c),
+    })
+    if (analysis.existing) {
+      return c.json({ alreadyKept: true, word: getWord(analysis.existing.id) })
+    }
+    const word = insertPhrase(analysis, phraseGloss(analysis), body.note ?? '')
+    return c.json({ alreadyKept: false, word }, 201)
+  } catch (error) {
+    return phraseError(c, error)
+  }
+})
+
+app.post('/api/words/:id/reanalyze', async (c) => {
+  const id = c.req.param('id')
+  const kind = wordKind(id)
+  if (!kind) return c.json({ error: 'Not found' }, 404)
+  if (kind !== 'phrase') return c.json({ error: 'Only phrases can be re-analyzed' }, 400)
+  const current = getWord(id)!
+  const body = (await c.req.json().catch(() => ({}))) as { explain?: string }
+  try {
+    const analysis = await analyzePhrase(current.displayLemma, current.language, body.explain?.trim() || 'en', {
+      visitor: visitorId(c),
+    })
+    return c.json(updatePhraseAnalysis(id, analysis, phraseGloss(analysis)))
+  } catch (error) {
+    return phraseError(c, error)
+  }
+})
+
 app.get('/api/stats', (c) => c.json(stats()))
 
 app.get('/api/words', (c) => {
@@ -126,8 +185,9 @@ app.get('/api/words', (c) => {
   const status = c.req.query('status') ?? undefined
   const due = c.req.query('due') ?? undefined
   const language = c.req.query('language') ?? undefined
+  const kind = c.req.query('kind') ?? undefined
   const archived = status === 'archived'
-  return c.json(listWords({ q, status, due, language, archived }))
+  return c.json(listWords({ q, status, due, language, kind, archived }))
 })
 
 app.get('/api/words/recent', (c) => c.json(recentWords()))

@@ -1,3 +1,4 @@
+import type { SQLInputValue } from 'node:sqlite'
 import { db } from './db.ts'
 
 export type LexiconBackup = {
@@ -33,7 +34,7 @@ function insertRows(table: string, rows: Array<Record<string, unknown>>, or: 'RE
     const keys = Object.keys(row)
     if (!keys.length) continue
     const sql = `INSERT OR ${or} INTO ${table} (${keys.join(', ')}) VALUES (${placeholders(keys.length)})`
-    db.prepare(sql).run(...keys.map((key) => row[key]))
+    db.prepare(sql).run(...keys.map((key) => row[key] as SQLInputValue))
   }
 }
 

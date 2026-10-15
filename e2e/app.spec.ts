@@ -4,7 +4,7 @@ test('Introduce, lexicon, word page, atlas, and review', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('link', { name: 'Wordkeep' })).toBeVisible()
   await expect(page.getByRole('heading', { name: /Type a word/i })).toBeVisible()
-  await expect(page.getByRole('combobox', { name: 'Word to look up' })).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Word or phrase to look up' })).toBeVisible()
 
   await page.getByRole('link', { name: 'Lexicon' }).click()
   await expect(page.getByRole('heading', { name: 'Lexicon' })).toBeVisible()
@@ -24,6 +24,29 @@ test('Introduce, lexicon, word page, atlas, and review', async ({ page }) => {
 
   await page.getByRole('link', { name: /Review/ }).click()
   await expect(page.getByRole('heading').first()).toBeVisible()
+})
+
+test('Phrases: mode toggle, lexicon filter, breakdown, and atlas', async ({ page }) => {
+  await page.goto('/')
+  const box = page.getByRole('combobox', { name: 'Word or phrase to look up' })
+  await box.fill('I am very happy.')
+  await expect(page.getByRole('button', { name: 'Phrase', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: 'Analyze' })).toBeVisible()
+
+  await page.getByRole('link', { name: 'Lexicon' }).click()
+  await page.getByRole('button', { name: 'phrases', exact: true }).click()
+  const phrase = page.locator('span.lemma', { hasText: 'I am very happy.' })
+  await expect(phrase).toBeVisible({ timeout: 15_000 })
+  await expect(page.locator('span.lemma', { hasText: /^happy$/ })).toHaveCount(0)
+  await phrase.click()
+
+  await expect(page.getByRole('heading', { name: 'I am very happy.' })).toBeVisible()
+  const strip = page.getByLabel('Word-by-word breakdown')
+  await expect(strip.getByRole('link', { name: /am/ })).toHaveAttribute('href', '/?q=be&lang=en')
+  await expect(page.getByText('present simple')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Re-analyze grammar' })).toBeVisible()
+  await expect(page.locator('canvas')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'happy', exact: true }).last()).toBeVisible()
 })
 
 test('Discover page loads', async ({ page }) => {

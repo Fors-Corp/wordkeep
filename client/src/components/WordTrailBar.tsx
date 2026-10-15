@@ -62,7 +62,7 @@ export function WordTrailBar() {
           </li>
         ))}
       </ol>
-      <span className="hidden text-[11px] uppercase tracking-wide text-muted sm:inline">
+      <span className="hidden text-xs uppercase tracking-wide text-muted sm:inline">
         {trailModifierLabel()} ← / →
       </span>
     </div>

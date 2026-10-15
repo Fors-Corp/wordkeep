@@ -1,7 +1,9 @@
 import type {
+  EntryKind,
   Grade,
   LinkRelation,
   LookupResult,
+  PhraseAnalysis,
   Sense,
   Stats,
   WordDetail,
@@ -10,12 +12,15 @@ import type {
   WordSummary,
 } from '../../shared/types.ts'
 import { applyGrade, initialRecall } from '../../shared/sm2.ts'
+import { isContentToken } from '../../shared/phrase.ts'
 import { db, findWordId, normalizeLemma } from './db.ts'
 
 export { findWordId, normalizeLemma }
 
 type WordRow = {
   id: string
+  kind: string | null
+  analysis_json: string | null
   lemma: string
   display_lemma: string
   language: string
@@ -62,6 +67,7 @@ function glossFor(wordId: string, primarySenseId: string | null): string {
 function toSummary(row: WordRow): WordSummary {
   return {
     id: row.id,
+    kind: row.kind === 'phrase' ? 'phrase' : 'word',
     lemma: row.lemma,
     displayLemma: row.display_lemma,
     language: row.language,
@@ -111,6 +117,16 @@ function formsFor(row: WordRow): WordForm[] {
     return Array.isArray(value) ? value : []
   } catch {
     return []
+  }
+}
+
+function analysisFor(row: WordRow): PhraseAnalysis | null {
+  if (row.kind !== 'phrase' || !row.analysis_json) return null
+  try {
+    const value = JSON.parse(row.analysis_json) as PhraseAnalysis
+    return value && Array.isArray(value.tokens) ? { ...value, existing: { id: row.id } } : null
+  } catch {
+    return null
   }
 }
 
@@ -194,6 +210,7 @@ function toDetail(row: WordRow): WordDetail {
     forms: formsFor(row),
     senses: sensesFor(row.id),
     links: linksFor(row.id),
+    analysis: analysisFor(row),
   }
 }
 
@@ -207,6 +224,7 @@ export function listWords(opts: {
   status?: string
   due?: string
   language?: string
+  kind?: string
   archived?: boolean
 }): WordSummary[] {
   const clauses: string[] = []
@@ -226,6 +244,10 @@ export function listWords(opts: {
   if (opts.language) {
     clauses.push('language = ?')
     params.push(opts.language)
+  }
+  if (opts.kind === 'word' || opts.kind === 'phrase') {
+    clauses.push('kind = ?')
+    params.push(opts.kind)
   }
   if (opts.q) {
     clauses.push('(display_lemma LIKE ? OR lemma LIKE ? OR note LIKE ?)')
@@ -333,6 +355,8 @@ export function insertFromLookup(
       fromLanguageName: lookup.languageName,
     })
   }
+  linkWaitingPhrases(id, lemma, lookup.language, lookup.displayLemma, lookup.languageName)
+
   for (const term of [...ants].slice(0, 12)) {
     upsertLink({
       fromId: id,
@@ -347,6 +371,128 @@ export function insertFromLookup(
   }
 
   return getWord(id)!
+}
+
+/** Kept phrases that contain this word now point at it, and it points back. */
+function linkWaitingPhrases(id: string, lemma: string, language: string, display: string, languageName: string) {
+  db.prepare(
+    `UPDATE word_links SET to_word_id = ?
+     WHERE relation = 'phrase' AND to_word_id IS NULL AND to_lemma = ? AND to_language = ?`,
+  ).run(id, lemma, language)
+  const phrases = db
+    .prepare(
+      `SELECT w.id, w.display_lemma, w.language, w.language_name FROM word_links l
+       JOIN words w ON w.id = l.from_word_id
+       WHERE l.relation = 'phrase' AND l.to_word_id = ? AND w.kind = 'phrase'`,
+    )
+    .all(id) as Array<{ id: string; display_lemma: string; language: string; language_name: string }>
+  for (const phrase of phrases) {
+    upsertLink({
+      fromId: id,
+      toLemma: phrase.display_lemma,
+      toLanguage: phrase.language,
+      toLanguageName: phrase.language_name,
+      relation: 'phrase',
+      toWordId: phrase.id,
+      fromLemma: display,
+      fromLanguage: language,
+      fromLanguageName: languageName,
+    })
+  }
+}
+
+function phraseSense(analysis: PhraseAnalysis, gloss: string) {
+  const tags = [analysis.sentenceType, analysis.tense, analysis.mood, analysis.voice]
+    .map((item) => item.trim())
+    .filter(Boolean)
+  const examples = analysis.idioms.map((item) => `${item.text} — ${item.meaning}`).slice(0, 4)
+  return { definition: gloss, tags, examples }
+}
+
+function storedAnalysis(analysis: PhraseAnalysis): string {
+  return JSON.stringify({ ...analysis, existing: null })
+}
+
+export function insertPhrase(analysis: PhraseAnalysis, gloss: string, note: string): WordDetail {
+  const now = Date.now()
+  const recall = initialRecall(now)
+  const id = crypto.randomUUID()
+  const display = analysis.text.trim()
+  const lemma = normalizeLemma(display, analysis.language)
+
+  db.prepare(
+    `INSERT INTO words (
+      id, kind, analysis_json, lemma, display_lemma, language, language_name, phonetic, etymology, note, forms_json,
+      status, ease_factor, interval_days, repetitions, due_at, last_reviewed_at, created_at, updated_at
+    ) VALUES (?, 'phrase', ?, ?, ?, ?, ?, NULL, NULL, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    storedAnalysis(analysis),
+    lemma,
+    display,
+    analysis.language,
+    analysis.languageName,
+    note,
+    recall.status,
+    recall.easeFactor,
+    recall.intervalDays,
+    recall.repetitions,
+    recall.dueAt,
+    recall.lastReviewedAt,
+    now,
+    now,
+  )
+
+  const senseId = crypto.randomUUID()
+  const sense = phraseSense(analysis, gloss)
+  db.prepare(
+    `INSERT INTO senses (id, word_id, part_of_speech, definition, synonyms_json, antonyms_json, tags_json, examples_json, sort_order)
+     VALUES (?, ?, 'phrase', ?, '[]', '[]', ?, ?, 0)`,
+  ).run(senseId, id, sense.definition, JSON.stringify(sense.tags), JSON.stringify(sense.examples))
+  db.prepare('UPDATE words SET primary_sense_id = ? WHERE id = ?').run(senseId, id)
+
+  const seen = new Set<string>()
+  for (const token of analysis.tokens) {
+    const trusted = token.known || (analysis.source === 'claude' && token.partOfSpeech)
+    if (!trusted || !isContentToken(token)) continue
+    const key = normalizeLemma(token.lemma, analysis.language)
+    if (!key || key === lemma || seen.has(key)) continue
+    seen.add(key)
+    upsertLink({
+      fromId: id,
+      toLemma: token.lemma,
+      toLanguage: analysis.language,
+      toLanguageName: analysis.languageName,
+      relation: 'phrase',
+      fromLemma: display,
+      fromLanguage: analysis.language,
+      fromLanguageName: analysis.languageName,
+    })
+    if (seen.size >= 12) break
+  }
+
+  return getWord(id)!
+}
+
+export function updatePhraseAnalysis(id: string, analysis: PhraseAnalysis, gloss: string): WordDetail | null {
+  const row = db.prepare('SELECT * FROM words WHERE id = ?').get(id) as WordRow | undefined
+  if (!row || row.kind !== 'phrase') return null
+  const sense = phraseSense(analysis, gloss)
+  db.prepare('UPDATE words SET analysis_json = ?, updated_at = ? WHERE id = ?').run(
+    storedAnalysis(analysis),
+    Date.now(),
+    id,
+  )
+  db.prepare(
+    `UPDATE senses SET definition = ?, tags_json = ?, examples_json = ? WHERE word_id = ? AND part_of_speech = 'phrase'`,
+  ).run(sense.definition, JSON.stringify(sense.tags), JSON.stringify(sense.examples), id)
+  return getWord(id)
+}
+
+export function wordKind(id: string): EntryKind | null {
+  const row = db.prepare('SELECT kind FROM words WHERE id = ?').get(id) as { kind: string } | undefined
+  if (!row) return null
+  return row.kind === 'phrase' ? 'phrase' : 'word'
 }
 
 export function updateWord(
@@ -440,7 +586,12 @@ export function stats(): Stats {
       .prepare('SELECT COUNT(DISTINCT language) AS n FROM words WHERE archived_at IS NULL')
       .get() as { n: number }
   ).n
-  return { dueToday, newCount, lexiconCount, languageCount }
+  const phraseCount = (
+    db
+      .prepare(`SELECT COUNT(*) AS n FROM words WHERE archived_at IS NULL AND kind = 'phrase'`)
+      .get() as { n: number }
+  ).n
+  return { dueToday, newCount, lexiconCount, languageCount, phraseCount }
 }
 
 export function recentWords(limit = 6): WordSummary[] {

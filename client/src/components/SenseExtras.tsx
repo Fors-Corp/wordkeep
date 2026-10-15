@@ -19,7 +19,7 @@ function TermRow({
   const tone = kind === 'syn' ? 'border-saved/30 text-saved' : 'border-accent/30 text-accent'
   return (
     <p className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
-      <span className="text-[11px] uppercase tracking-[0.14em] text-muted">{label}</span>
+      <span className="text-xs uppercase tracking-[0.14em] text-muted">{label}</span>
       {terms.map((term) =>
         linked ? (
           <Link
@@ -62,7 +62,7 @@ export function SenseExtras({
           {(sense.tags ?? []).map((tag) => (
             <span
               key={tag}
-              className="rounded-full bg-chip px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted"
+              className="rounded-full bg-chip px-2 py-0.5 text-xs uppercase tracking-wide text-muted"
             >
               {tag}
             </span>
@@ -100,13 +100,13 @@ export function FormsLine({
   if (!forms.length) return null
   return (
     <p className="mt-2 text-sm text-muted">
-      <span className="mr-2 text-[11px] uppercase tracking-[0.14em]">Forms</span>
+      <span className="mr-2 text-xs uppercase tracking-[0.14em]">Forms</span>
       {forms.map((form, index) => (
         <span key={`${form.word}-${index}`}>
           {index > 0 ? ' · ' : ''}
           <span className="text-ink">{form.word}</span>
           {form.tags.length > 0 && (
-            <span className="ml-1 text-[11px]">({form.tags.join(', ')})</span>
+            <span className="ml-1 text-xs">({form.tags.join(', ')})</span>
           )}
         </span>
       ))}

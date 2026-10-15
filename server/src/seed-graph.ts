@@ -1,7 +1,7 @@
 import { db, findWordId, normalizeLemma } from './db.ts'
 import { initialRecall } from '../../shared/sm2.ts'
-import { upsertLink } from './words.ts'
-import type { LinkRelation } from '../../shared/types.ts'
+import { insertPhrase, upsertLink } from './words.ts'
+import type { LinkRelation, PhraseAnalysis, PhraseToken } from '../../shared/types.ts'
 
 const LANG: Record<string, string> = {
   en: 'English',
@@ -427,7 +427,91 @@ export function seedGraphDemo(): { created: number; linked: number } {
     linkPair(fromId, from, link.to, link.toLang, link.relation)
     linked += 1
   }
-  return { created: WORDS.length, linked }
+  const phrase = seedPhrase() ? 1 : 0
+  return { created: WORDS.length + phrase, linked }
+}
+
+function seedToken(
+  index: number,
+  start: number,
+  text: string,
+  fields: Partial<PhraseToken>,
+): PhraseToken {
+  return {
+    index,
+    start,
+    text,
+    lemma: text.toLowerCase(),
+    partOfSpeech: '',
+    features: [],
+    role: '',
+    gloss: '',
+    explanation: '',
+    known: true,
+    punct: false,
+    ...fields,
+  }
+}
+
+export const DEMO_PHRASE: PhraseAnalysis = {
+  text: 'I am very happy.',
+  language: 'en',
+  languageName: 'English',
+  source: 'dictionary',
+  translation: 'I feel a great deal of joy.',
+  summary: 'A copular sentence: the subject “I” is linked by “am” to the adjective phrase “very happy”.',
+  sentenceType: 'declarative',
+  tense: 'present simple',
+  mood: 'indicative',
+  voice: 'active',
+  clauses: [{ text: 'I am very happy', type: 'main', explanation: 'A single main clause.' }],
+  idioms: [],
+  tokens: [
+    seedToken(0, 0, 'I', {
+      lemma: 'I',
+      partOfSpeech: 'pronoun',
+      role: 'subject',
+      features: ['first person', 'singular', 'nominative'],
+      gloss: 'The speaker or writer.',
+      explanation: 'The subject: who is happy.',
+    }),
+    seedToken(1, 2, 'am', {
+      lemma: 'be',
+      partOfSpeech: 'verb',
+      role: 'predicate (copula)',
+      features: ['first person', 'singular', 'present', 'indicative'],
+      gloss: 'To have a quality or state.',
+      explanation: 'Links the subject to its description.',
+    }),
+    seedToken(2, 5, 'very', {
+      partOfSpeech: 'adverb',
+      role: 'modifier',
+      gloss: 'To a high degree.',
+      explanation: 'Intensifies “happy”.',
+    }),
+    seedToken(3, 10, 'happy', {
+      partOfSpeech: 'adjective',
+      role: 'subject complement',
+      features: ['positive degree'],
+      gloss: 'Feeling or showing pleasure or contentment.',
+      explanation: 'Describes the subject after the copula.',
+    }),
+    seedToken(4, 15, '.', { lemma: '.', partOfSpeech: 'punctuation', known: false, punct: true }),
+  ],
+  questions: [
+    { question: 'What is the role of “am” in this sentence?', answer: 'Copula linking the subject to “very happy”.' },
+    { question: 'Which word does “very” modify?', answer: '“happy”' },
+    { question: 'What tense is the sentence in?', answer: 'Present simple' },
+  ],
+  clozeIndexes: [1, 3],
+  note: 'Demo phrase with a hand-written analysis.',
+  existing: null,
+}
+
+function seedPhrase(): boolean {
+  if (findWordId(DEMO_PHRASE.text, DEMO_PHRASE.language)) return false
+  insertPhrase(DEMO_PHRASE, DEMO_PHRASE.translation, SEED_NOTE)
+  return true
 }
 
 const runningDirect = process.argv[1]?.includes('seed-graph')

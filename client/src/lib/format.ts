@@ -60,3 +60,43 @@ export function hashHue(input: string): number {
   for (const char of input) hash = (hash * 33 + char.charCodeAt(0)) >>> 0
   return hash % 360
 }
+
+/** The reader's language, used for grammar explanations and translations. */
+export function explainLanguage(): string {
+  const tag = typeof navigator === 'undefined' ? 'en' : navigator.language || 'en'
+  return tag.split('-')[0]?.toLowerCase() || 'en'
+}
+
+const POS_SHORT: Record<string, string> = {
+  noun: 'n',
+  'proper noun': 'prop',
+  verb: 'v',
+  auxiliary: 'aux',
+  adjective: 'adj',
+  adverb: 'adv',
+  pronoun: 'pron',
+  determiner: 'det',
+  article: 'art',
+  preposition: 'prep',
+  postposition: 'post',
+  conjunction: 'conj',
+  particle: 'part',
+  numeral: 'num',
+  interjection: 'intj',
+}
+
+export function posShort(pos: string): string {
+  const key = pos.trim().toLowerCase()
+  return POS_SHORT[key] ?? (key.length > 6 ? key.slice(0, 5) : key)
+}
+
+/** Tailwind text color for a part of speech, so the breakdown reads at a glance. */
+export function posTone(pos: string): string {
+  const key = pos.trim().toLowerCase()
+  if (key === 'noun' || key === 'proper noun' || key === 'numeral') return 'text-related'
+  if (key === 'verb' || key === 'auxiliary') return 'text-accent'
+  if (key === 'adjective') return 'text-saved'
+  if (key === 'adverb') return 'text-etymology'
+  if (key === 'pronoun' || key === 'determiner' || key === 'article') return 'text-gold'
+  return 'text-muted'
+}
