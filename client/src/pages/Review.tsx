@@ -7,8 +7,7 @@ import { PhraseAnalysisView } from '../components/PhraseAnalysis'
 import { SenseExtras } from '../components/SenseExtras'
 import { useI18n } from '../context/I18nContext'
 import type { MessageKey, Translate } from '../i18n'
-import { useStats } from '../context/StatsContext'
-import { api } from '../lib/api'
+import { useLexicon } from '../context/LexiconContext'
 import { isRtl, posLabel } from '../lib/format'
 
 const GRADE_META: Array<{ grade: Grade; label: MessageKey; key: string }> = [
@@ -107,7 +106,7 @@ function PhraseBack({ card, quiz }: { card: WordDetail; quiz: PhraseCard }) {
 }
 
 export function Review() {
-  const { refresh } = useStats()
+  const { device, lexicon, ready } = useLexicon()
   const { t, languageName } = useI18n()
   const [queue, setQueue] = useState<WordDetail[]>([])
   const [index, setIndex] = useState(0)
@@ -125,13 +124,12 @@ export function Review() {
       }
     : null
 
+  // The queue is taken once per visit; grading changes the lexicon but not the cards already drawn.
   useEffect(() => {
-    api
-      .queue()
-      .then(setQueue)
-      .catch(() => undefined)
-      .finally(() => setLoading(false))
-  }, [])
+    if (!ready || !loading) return
+    setQueue(lexicon.reviewQueue())
+    setLoading(false)
+  }, [ready, loading, lexicon])
 
   useEffect(() => {
     if (card) setFlipped(false)
@@ -147,16 +145,15 @@ export function Review() {
         setFlipped(true)
       }
       const meta = GRADE_META.find((item) => item.key === event.key)
-      if (meta && flipped) void grade(meta.grade)
+      if (meta && flipped) grade(meta.grade)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [flipped, card, queue, index])
 
-  async function grade(value: Grade) {
+  function grade(value: Grade) {
     if (!card) return
-    await api.grade(card.id, value)
-    refresh()
+    device?.grade(card.id, value)
     setDone((n) => n + 1)
     const remaining = queue.filter((_, i) => i !== index)
     if (value === 'again') remaining.push(card)
@@ -254,7 +251,7 @@ export function Review() {
             key={item.grade}
             type="button"
             disabled={!flipped}
-            onClick={() => void grade(item.grade)}
+            onClick={() => grade(item.grade)}
             className="rounded-2xl border border-rule bg-paper-2 px-3 py-3 text-sm disabled:cursor-not-allowed"
           >
             <span className="block font-semibold">{t(item.label)}</span>

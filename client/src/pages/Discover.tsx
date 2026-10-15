@@ -4,7 +4,7 @@ import type { PlayCard, PlayRound } from '@shared/types'
 import { useI18n } from '../context/I18nContext'
 import { useLanguage } from '../context/LanguageContext'
 import { ApiError } from '../lib/api'
-import { useStats } from '../context/StatsContext'
+import { useLexicon } from '../context/LexiconContext'
 import { api } from '../lib/api'
 import { hashHue, isRtl, posLabel } from '../lib/format'
 import { lookupHref } from '../lib/paths'
@@ -24,7 +24,7 @@ function shuffle<T>(items: T[]): T[] {
 
 export function Discover() {
   const { lookupLang, current } = useLanguage()
-  const { refresh } = useStats()
+  const { device } = useLexicon()
   const { t, languageName } = useI18n()
   const dictionaryName = current ? languageName(current.code, current.name) : languageName(lookupLang)
   const [round, setRound] = useState<PlayRound | null>(null)
@@ -101,11 +101,11 @@ export function Discover() {
 
   async function keepCard(card: PlayCard) {
     try {
-      const saved = await api.keep({ q: card.lemma, lang: lookupLang })
-      refresh()
-      setKept((current) => ({ ...current, [card.id]: saved.word.id }))
+      if (!device) return
+      const saved = device.keepLookup(await api.lookup(card.lemma, lookupLang))
+      setKept((current) => ({ ...current, [card.id]: saved.id }))
     } catch {
-      /* already kept or lookup failed */
+      /* the dictionary had no entry for it */
     }
   }
 

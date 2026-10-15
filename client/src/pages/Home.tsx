@@ -6,7 +6,7 @@ import { FormsLine } from '../components/SenseExtras'
 import { SenseList } from '../components/SenseList'
 import { useI18n } from '../context/I18nContext'
 import { useLanguage } from '../context/LanguageContext'
-import { useStats } from '../context/StatsContext'
+import { useLexicon } from '../context/LexiconContext'
 import { useWordTrail } from '../context/WordTrailContext'
 import { api } from '../lib/api'
 import { ApiError } from '../lib/api'
@@ -14,6 +14,7 @@ import { errorText } from '../lib/errors'
 import { formatDue, isRtl } from '../lib/format'
 import { lookupHref } from '../lib/paths'
 import { useLookup } from '../lib/useLookup'
+import { SampleButton } from '../components/SampleButton'
 
 const emptySuggest: SuggestResponse = { query: '', detected: [], suggestions: [] }
 
@@ -24,8 +25,8 @@ function systemLanguage(): string {
 
 export function Home() {
   const { current } = useLanguage()
-  const { t, tp, explainFor, languageName } = useI18n()
-  const { stats, recent, refresh } = useStats()
+  const { t, tp, languageName } = useI18n()
+  const { device, lexicon, stats, recent, ready } = useLexicon()
   const { visit } = useWordTrail()
   const {
     query,
@@ -33,7 +34,6 @@ export function Home() {
     choose,
     lookup,
     phrase,
-    setPhrase,
     busy,
     notFound,
     error,
@@ -45,13 +45,14 @@ export function Home() {
   const navigate = useNavigate()
   const [primary, setPrimary] = useState(0)
   const [note, setNote] = useState('')
-  const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [suggest, setSuggest] = useState<SuggestResponse>(emptySuggest)
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
   const boxRef = useRef<HTMLFormElement>(null)
   const uiLang = systemLanguage()
+  const lookupKeptId = lookup ? lexicon.findId(lookup.displayLemma, lookup.language) : null
+  const phraseKeptId = phrase ? lexicon.findId(phrase.text, phrase.language) : null
   const dictionaryName = current ? languageName(current.code, current.name) : t('home.yourLanguage')
 
   useEffect(() => {
@@ -105,44 +106,25 @@ export function Home() {
     submitPhrase()
   }
 
-  async function keepPhrase() {
-    if (!phrase) return
-    setSaving(true)
+  function keepPhrase() {
+    if (!phrase || !device) return
     setSaveError('')
     try {
-      const saved = await api.keepPhrase({
-        text: phrase.text,
-        lang: phrase.language,
-        explain: explainFor(phrase.language),
-        note,
-      })
-      refresh()
-      setPhrase({ ...phrase, existing: { id: saved.word.id } })
-      navigate(`/words/${saved.word.id}`)
+      const saved = device.keepPhrase(phrase, note)
+      navigate(`/words/${saved.id}`)
     } catch (err) {
       setSaveError(errorText(err, t, t('home.saveFailed')))
-    } finally {
-      setSaving(false)
     }
   }
 
-  async function keep() {
-    if (!lookup) return
-    setSaving(true)
+  function keep() {
+    if (!lookup || !device) return
     setSaveError('')
     try {
-      const saved = await api.keep({
-        q: lookup.displayLemma,
-        lang: lookup.language,
-        note,
-        primarySenseIndex: primary,
-      })
-      refresh()
-      navigate(`/words/${saved.word.id}`)
+      const saved = device.keepLookup(lookup, { note, primarySenseIndex: primary })
+      navigate(`/words/${saved.id}`)
     } catch (err) {
       setSaveError(errorText(err, t, t('home.saveFailed')))
-    } finally {
-      setSaving(false)
     }
   }
 
@@ -304,10 +286,10 @@ export function Home() {
                 {phrase.source === 'claude' ? t('home.byClaude') : t('home.byDictionary')}
               </span>
             </div>
-            {phrase.existing && (
+            {phraseKeptId && (
               <p className="mb-3 text-sm text-saved">
                 {t('home.alreadyKept')}{' '}
-                <Link className="underline" to={`/words/${phrase.existing.id}`}>
+                <Link className="underline" to={`/words/${phraseKeptId}`}>
                   {t('home.openIt')}
                 </Link>
               </p>
@@ -327,8 +309,8 @@ export function Home() {
             {saveError && <p className="mt-2 text-sm text-accent">{saveError}</p>}
             <button
               type="button"
-              onClick={() => void keepPhrase()}
-              disabled={saving || Boolean(phrase.existing)}
+              onClick={() => keepPhrase()}
+              disabled={!ready || Boolean(phraseKeptId)}
               className="mt-4 rounded-full bg-accent px-5 py-2 text-sm font-semibold text-paper disabled:opacity-50"
             >
               {t('home.keepPhrase')}
@@ -353,10 +335,10 @@ export function Home() {
                 {t('home.fallbackFrom', { language: languageName(lookup.language, lookup.languageName) })}
               </p>
             )}
-            {lookup.existing && (
+            {lookupKeptId && (
               <p className="mt-2 text-sm text-saved">
                 {t('home.alreadyKept')}{' '}
-                <Link className="underline" to={`/words/${lookup.existing.id}`}>
+                <Link className="underline" to={`/words/${lookupKeptId}`}>
                   {t('home.openIt')}
                 </Link>
               </p>
@@ -406,8 +388,8 @@ export function Home() {
             {saveError && <p className="mt-2 text-sm text-accent">{saveError}</p>}
             <button
               type="button"
-              onClick={() => void keep()}
-              disabled={saving || Boolean(lookup.existing)}
+              onClick={() => keep()}
+              disabled={!ready || Boolean(lookupKeptId)}
               className="mt-4 rounded-full bg-accent px-5 py-2 text-sm font-semibold text-paper disabled:opacity-50"
             >
               {t('home.keepWord')}
@@ -441,7 +423,12 @@ export function Home() {
         <div>
           <h2 className="mb-3 text-xs uppercase tracking-[0.18em] text-muted">{t('home.recent')}</h2>
           <ul className="space-y-2">
-            {recent.length === 0 && <li className="text-sm text-muted">{t('home.nothingKept')}</li>}
+            {ready && recent.length === 0 && (
+              <li className="text-sm text-muted">
+                {t('home.nothingKept')}
+                <SampleButton className="mt-3 block" />
+              </li>
+            )}
             {recent.map((word) => (
               <li key={word.id}>
                 <Link

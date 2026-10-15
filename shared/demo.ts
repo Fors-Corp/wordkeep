@@ -1,7 +1,12 @@
-import { db, findWordId, normalizeLemma } from './db.ts'
-import { initialRecall } from '../../shared/sm2.ts'
-import { insertPhrase, upsertLink } from './words.ts'
-import type { LinkRelation, PhraseAnalysis, PhraseToken } from '../../shared/types.ts'
+import { entryFromPhrase, normalizeLemma, type StoredEntry, type StoredLink } from './lexicon.ts'
+import { initialRecall } from './sm2.ts'
+import type { LinkRelation, PhraseAnalysis, PhraseToken } from './types.ts'
+
+/**
+ * Sample words and one sample phrase a reader can add from an empty lexicon:
+ * an English, Spanish, French and German cluster linked as synonyms,
+ * antonyms and translations, so the Atlas has something to show.
+ */
 
 const LANG: Record<string, string> = {
   en: 'English',
@@ -10,7 +15,7 @@ const LANG: Record<string, string> = {
   de: 'German',
 }
 
-type SeedWord = {
+type SampleWord = {
   lemma: string
   language: string
   languageName: string
@@ -26,7 +31,7 @@ function w(
   language: keyof typeof LANG,
   definition: string,
   extras: { synonyms?: string[]; antonyms?: string[]; related?: string[]; pos?: string } = {},
-): SeedWord {
+): SampleWord {
   return {
     lemma,
     language,
@@ -39,7 +44,7 @@ function w(
   }
 }
 
-const WORDS: SeedWord[] = [
+const WORDS: SampleWord[] = [
   w('happy', 'en', 'Feeling or showing pleasure or contentment.', {
     synonyms: ['glad', 'joyful', 'cheerful'],
     antonyms: ['sad', 'unhappy'],
@@ -307,131 +312,8 @@ const CROSS: Array<{
   { from: 'heureux', fromLang: 'fr', to: 'glücklich', toLang: 'de', relation: 'translation' },
 ]
 
-const SEED_NOTE = 'graph demo seed'
 
-function upsertWord(seed: SeedWord): string {
-  const existing = findWordId(seed.lemma, seed.language)
-  if (existing) {
-    const row = db
-      .prepare('SELECT note, primary_sense_id FROM words WHERE id = ?')
-      .get(existing) as { note: string; primary_sense_id: string | null } | undefined
-    if (row?.note === SEED_NOTE && row.primary_sense_id) {
-      db.prepare(
-        `UPDATE senses SET part_of_speech = ?, definition = ?, synonyms_json = ?, antonyms_json = ?
-         WHERE id = ?`,
-      ).run(
-        seed.partOfSpeech,
-        seed.definition,
-        JSON.stringify(seed.synonyms),
-        JSON.stringify(seed.antonyms),
-        row.primary_sense_id,
-      )
-    }
-    return existing
-  }
-
-  const now = Date.now()
-  const recall = initialRecall(now)
-  const id = crypto.randomUUID()
-  db.prepare(
-    `INSERT INTO words (
-      id, lemma, display_lemma, language, language_name, phonetic, etymology, note, forms_json,
-      status, ease_factor, interval_days, repetitions, due_at, last_reviewed_at, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    id,
-    normalizeLemma(seed.lemma, seed.language),
-    seed.lemma,
-    seed.language,
-    seed.languageName,
-    null,
-    null,
-    SEED_NOTE,
-    '[]',
-    recall.status,
-    recall.easeFactor,
-    recall.intervalDays,
-    recall.repetitions,
-    recall.dueAt,
-    recall.lastReviewedAt,
-    now,
-    now,
-  )
-  const senseId = crypto.randomUUID()
-  db.prepare(
-    `INSERT INTO senses (id, word_id, part_of_speech, definition, synonyms_json, antonyms_json, tags_json, examples_json, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)`,
-  ).run(
-    senseId,
-    id,
-    seed.partOfSpeech,
-    seed.definition,
-    JSON.stringify(seed.synonyms),
-    JSON.stringify(seed.antonyms),
-    '[]',
-    '[]',
-  )
-  db.prepare('UPDATE words SET primary_sense_id = ? WHERE id = ?').run(senseId, id)
-  return id
-}
-
-function linkPair(
-  fromId: string,
-  from: SeedWord,
-  toLemma: string,
-  toLanguage: string,
-  relation: LinkRelation,
-) {
-  upsertLink({
-    fromId,
-    toLemma,
-    toLanguage,
-    toLanguageName: LANG[toLanguage] ?? toLanguage,
-    relation,
-    fromLemma: from.lemma,
-    fromLanguage: from.language,
-    fromLanguageName: from.languageName,
-  })
-}
-
-export function seedGraphDemo(): { created: number; linked: number } {
-  const ids = new Map<string, string>()
-  for (const word of WORDS) {
-    ids.set(`${word.language}:${normalizeLemma(word.lemma, word.language)}`, upsertWord(word))
-  }
-
-  let linked = 0
-  for (const word of WORDS) {
-    const fromId = ids.get(`${word.language}:${normalizeLemma(word.lemma, word.language)}`)
-    if (!fromId) continue
-    for (const term of word.synonyms) {
-      linkPair(fromId, word, term, word.language, 'synonym')
-      linked += 1
-    }
-    for (const term of word.antonyms) {
-      linkPair(fromId, word, term, word.language, 'antonym')
-      linked += 1
-    }
-    for (const term of word.related) {
-      linkPair(fromId, word, term, word.language, 'related')
-      linked += 1
-    }
-  }
-  for (const link of CROSS) {
-    const fromId = ids.get(`${link.fromLang}:${normalizeLemma(link.from, link.fromLang)}`)
-    if (!fromId) continue
-    const from = WORDS.find(
-      (word) => word.language === link.fromLang && normalizeLemma(word.lemma, word.language) === normalizeLemma(link.from, link.fromLang),
-    )
-    if (!from) continue
-    linkPair(fromId, from, link.to, link.toLang, link.relation)
-    linked += 1
-  }
-  const phrase = seedPhrase() ? 1 : 0
-  return { created: WORDS.length + phrase, linked }
-}
-
-function seedToken(
+function sampleToken(
   index: number,
   start: number,
   text: string,
@@ -467,7 +349,7 @@ export const DEMO_PHRASE: PhraseAnalysis = {
   clauses: [{ text: 'I am very happy', type: 'main', explanation: 'A single main clause.' }],
   idioms: [],
   tokens: [
-    seedToken(0, 0, 'I', {
+    sampleToken(0, 0, 'I', {
       lemma: 'I',
       partOfSpeech: 'pronoun',
       role: 'subject',
@@ -475,7 +357,7 @@ export const DEMO_PHRASE: PhraseAnalysis = {
       gloss: 'The speaker or writer.',
       explanation: 'The subject: who is happy.',
     }),
-    seedToken(1, 2, 'am', {
+    sampleToken(1, 2, 'am', {
       lemma: 'be',
       partOfSpeech: 'verb',
       role: 'predicate (copula)',
@@ -483,20 +365,20 @@ export const DEMO_PHRASE: PhraseAnalysis = {
       gloss: 'To have a quality or state.',
       explanation: 'Links the subject to its description.',
     }),
-    seedToken(2, 5, 'very', {
+    sampleToken(2, 5, 'very', {
       partOfSpeech: 'adverb',
       role: 'modifier',
       gloss: 'To a high degree.',
       explanation: 'Intensifies “happy”.',
     }),
-    seedToken(3, 10, 'happy', {
+    sampleToken(3, 10, 'happy', {
       partOfSpeech: 'adjective',
       role: 'subject complement',
       features: ['positive degree'],
       gloss: 'Feeling or showing pleasure or contentment.',
       explanation: 'Describes the subject after the copula.',
     }),
-    seedToken(4, 15, '.', { lemma: '.', partOfSpeech: 'punctuation', known: false, punct: true }),
+    sampleToken(4, 15, '.', { lemma: '.', partOfSpeech: 'punctuation', known: false, punct: true }),
   ],
   questions: [
     { question: 'What is the role of “am” in this sentence?', answer: 'Copula linking the subject to “very happy”.' },
@@ -509,14 +391,76 @@ export const DEMO_PHRASE: PhraseAnalysis = {
   existing: null,
 }
 
-function seedPhrase(): boolean {
-  if (findWordId(DEMO_PHRASE.text, DEMO_PHRASE.language)) return false
-  insertPhrase(DEMO_PHRASE, DEMO_PHRASE.translation, SEED_NOTE)
-  return true
+
+/** Stable ids, so loading the samples twice (or on two synced devices) never duplicates them. */
+export function sampleId(...parts: string[]): string {
+  let a = 0x811c9dc5
+  let b = 0x01000193
+  for (const char of parts.join('\u0000')) {
+    const code = char.codePointAt(0) ?? 0
+    a = Math.imul(a ^ code, 0x01000193) >>> 0
+    b = Math.imul(b ^ code, 0x5bd1e995) >>> 0
+  }
+  return `sample-${a.toString(16).padStart(8, '0')}${b.toString(16).padStart(8, '0')}`
 }
 
-const runningDirect = process.argv[1]?.includes('seed-graph')
-if (runningDirect) {
-  const result = seedGraphDemo()
-  console.log(`Graph seed: ${result.created} words, ${result.linked} links`)
+export function sampleEntries(now = Date.now()): StoredEntry[] {
+  const entries = WORDS.map((word): StoredEntry => {
+    const id = sampleId('word', word.language, normalizeLemma(word.lemma, word.language))
+    const own = (lemma: string, relation: LinkRelation): StoredLink => ({
+      lemma,
+      language: word.language,
+      languageName: word.languageName,
+      relation,
+    })
+    const cross = CROSS.filter(
+      (link) => link.fromLang === word.language && normalizeLemma(link.from, link.fromLang) === normalizeLemma(word.lemma, word.language),
+    ).map((link) => ({
+      lemma: link.to,
+      language: link.toLang,
+      languageName: LANG[link.toLang] ?? link.toLang,
+      relation: link.relation,
+    }))
+    const sense = {
+      id: `${id}-s0`,
+      sortOrder: 0,
+      partOfSpeech: word.partOfSpeech,
+      definition: word.definition,
+      examples: [],
+      synonyms: word.synonyms,
+      antonyms: word.antonyms,
+      tags: [],
+    }
+    return {
+      id,
+      kind: 'word',
+      lemma: normalizeLemma(word.lemma, word.language),
+      displayLemma: word.lemma,
+      language: word.language,
+      languageName: word.languageName,
+      phonetic: null,
+      etymology: null,
+      note: '',
+      primarySenseId: sense.id,
+      archivedAt: null,
+      ...initialRecall(now),
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+      forms: [],
+      senses: [sense],
+      links: [
+        ...word.synonyms.map((term) => own(term, 'synonym')),
+        ...word.antonyms.map((term) => own(term, 'antonym')),
+        ...word.related.map((term) => own(term, 'related')),
+        ...cross,
+      ],
+      analysis: null,
+    }
+  })
+  const phrase = entryFromPhrase(DEMO_PHRASE, DEMO_PHRASE.translation, {
+    now: now + 1,
+    id: sampleId('phrase', DEMO_PHRASE.language, DEMO_PHRASE.text),
+  })
+  return [...entries, phrase]
 }

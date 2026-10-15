@@ -1,23 +1,16 @@
 import './test/db-env.ts'
 import assert from 'node:assert/strict'
-import { afterEach, before, describe, it } from 'node:test'
+import { afterEach, describe, it } from 'node:test'
 import { app } from './app.ts'
 import { db } from './db.ts'
 import { clearLookupCache } from './lookup.ts'
-import { insertFromLookup } from './words.ts'
-import { installDictionaryMock, lookupFixture } from './test/fixtures.ts'
+import { installDictionaryMock } from './test/fixtures.ts'
 
 async function json(res: Response) {
   return res.json() as Promise<Record<string, unknown>>
 }
 
 describe('API integration', () => {
-  before(() => {
-    db.exec('DELETE FROM word_links')
-    db.exec('DELETE FROM senses')
-    db.exec('DELETE FROM words')
-  })
-
   afterEach(() => {
     clearLookupCache()
   })
@@ -40,70 +33,7 @@ describe('API integration', () => {
       assert.equal(res.status, 200)
       const body = await json(res)
       assert.equal(body.displayLemma, 'happy')
-    } finally {
-      restore()
-    }
-  })
-
-  it('keeps, reads, patches, reviews, and deletes a word', async () => {
-    const restore = installDictionaryMock()
-    try {
-      const created = await app.request('/api/words', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ q: 'happy', lang: 'en', note: 'demo' }),
-      })
-      assert.equal(created.status, 201)
-      const payload = (await created.json()) as { alreadyKept: boolean; word: { id: string; note: string } }
-      assert.equal(payload.alreadyKept, false)
-      const id = payload.word.id
-
-      const again = await app.request('/api/words', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ q: 'happy', lang: 'en' }),
-      })
-      assert.equal(again.status, 200)
-      assert.equal(((await again.json()) as { alreadyKept: boolean }).alreadyKept, true)
-
-      const listed = await app.request('/api/words?q=happy')
-      assert.equal((await listed.json() as unknown[]).length, 1)
-
-      const patched = await app.request(`/api/words/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ note: 'updated' }),
-      })
-      assert.equal(((await patched.json()) as { note: string }).note, 'updated')
-
-      const queue = await app.request('/api/review/queue')
-      assert.ok(((await queue.json()) as unknown[]).length >= 1)
-
-      const graded = await app.request(`/api/review/${id}/grade`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ grade: 'good' }),
-      })
-      assert.equal(graded.status, 200)
-
-      const badGrade = await app.request(`/api/review/${id}/grade`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ grade: 'nope' }),
-      })
-      assert.equal(badGrade.status, 400)
-
-      const graph = await app.request(`/api/graph?wordId=${id}`)
-      const graphBody = (await graph.json()) as { nodes: unknown[]; edges: unknown[] }
-      assert.ok(graphBody.nodes.length >= 1)
-
-      const stats = await app.request('/api/stats')
-      assert.equal(typeof ((await stats.json()) as { lexiconCount: number }).lexiconCount, 'number')
-
-      const removed = await app.request(`/api/words/${id}`, { method: 'DELETE' })
-      assert.equal(removed.status, 200)
-      const missing = await app.request(`/api/words/${id}`)
-      assert.equal(missing.status, 404)
+      assert.equal(body.existing, null)
     } finally {
       restore()
     }
@@ -115,39 +45,9 @@ describe('API integration', () => {
     assert.deepEqual(await json(res), { query: '', detected: [], suggestions: [] })
   })
 
-  it('GET /api/graph for a missing word is empty', async () => {
-    const res = await app.request('/api/graph?wordId=nope')
-    assert.deepEqual(await json(res), { nodes: [], edges: [] })
-  })
-
-  it('POST /api/words requires q and lang', async () => {
-    const res = await app.request('/api/words', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    })
-    assert.equal(res.status, 400)
-  })
-
-  it('exports and imports a lexicon backup', async () => {
-    const restore = installDictionaryMock()
-    try {
-      await app.request('/api/words', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ q: 'happy', lang: 'en' }),
-      })
-      const exported = await app.request('/api/export')
-      assert.equal(exported.status, 200)
-      const backup = await exported.json()
-      const imported = await app.request('/api/import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'merge', backup }),
-      })
-      assert.equal(imported.status, 200)
-    } finally {
-      restore()
+  it('no longer serves lexicon storage routes', async () => {
+    for (const path of ['/api/words', '/api/stats', '/api/review/queue', '/api/graph']) {
+      assert.equal((await app.request(path)).status, 404, path)
     }
   })
 
@@ -159,12 +59,36 @@ describe('API integration', () => {
   })
 })
 
-describe('API graph with repository data', () => {
-  it('returns seeded-style links from insertFromLookup', async () => {
-    const word = insertFromLookup(lookupFixture({ lemma: 'joyful', displayLemma: 'joyful' }), '', 0)
-    const res = await app.request(`/api/graph?wordId=${word.id}`)
-    const body = (await res.json()) as { nodes: Array<{ kind: string }>; edges: Array<{ relation: string }> }
-    assert.ok(body.nodes.some((node) => node.kind === 'center'))
-    assert.ok(body.edges.some((edge) => edge.relation === 'synonym' || edge.relation === 'translation'))
+describe('legacy export', () => {
+  it('returns an empty v1 backup when the old tables are absent', async () => {
+    db.exec('DROP TABLE IF EXISTS word_links')
+    db.exec('DROP TABLE IF EXISTS senses')
+    db.exec('DROP TABLE IF EXISTS words')
+    const body = (await (await app.request('/api/legacy/export')).json()) as { version: number; words: unknown[] }
+    assert.equal(body.version, 1)
+    assert.deepEqual(body.words, [])
+  })
+
+  it('hands over rows from the old tables', async () => {
+    db.exec(`CREATE TABLE words (id TEXT PRIMARY KEY, lemma TEXT, display_lemma TEXT, language TEXT)`)
+    db.exec(`CREATE TABLE senses (id TEXT PRIMARY KEY, word_id TEXT, definition TEXT)`)
+    db.exec(`CREATE TABLE word_links (id TEXT PRIMARY KEY, from_word_id TEXT)`)
+    db.exec(`INSERT INTO words VALUES ('w1', 'happy', 'happy', 'en')`)
+    db.exec(`INSERT INTO senses VALUES ('s1', 'w1', 'Glad.')`)
+    try {
+      const body = (await (await app.request('/api/legacy/export')).json()) as {
+        words: Array<{ id: string }>
+        senses: unknown[]
+      }
+      assert.deepEqual(
+        body.words.map((row) => row.id),
+        ['w1'],
+      )
+      assert.equal(body.senses.length, 1)
+    } finally {
+      db.exec('DROP TABLE word_links')
+      db.exec('DROP TABLE senses')
+      db.exec('DROP TABLE words')
+    }
   })
 })

@@ -5,9 +5,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 import { I18nProvider } from '../context/I18nContext'
 import { LanguageProvider } from '../context/LanguageContext'
-import { StatsProvider } from '../context/StatsContext'
+import { LexiconProvider } from '../context/LexiconContext'
 import { WordTrailProvider } from '../context/WordTrailContext'
-import { phraseFixture } from '../test/phrase-fixture'
+import { phraseEntry, phraseFixture, seedDevice } from '../test/phrase-fixture'
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
@@ -18,11 +18,11 @@ function renderApp(path = '/') {
     <MemoryRouter initialEntries={[path]}>
       <I18nProvider>
         <LanguageProvider>
-          <StatsProvider>
+          <LexiconProvider>
             <WordTrailProvider>
               <App />
             </WordTrailProvider>
-          </StatsProvider>
+          </LexiconProvider>
         </LanguageProvider>
       </I18nProvider>
     </MemoryRouter>,
@@ -42,11 +42,7 @@ describe('app language menu', () => {
           { code: 'de', name: 'German', words: 1 },
         ])
       }
-      if (url.includes('/api/stats')) {
-        return json({ dueToday: 1, newCount: 1, lexiconCount: 2, languageCount: 1, phraseCount: 2 })
-      }
       if (url.includes('/api/phrase/analyze')) return json(phraseFixture({ language: 'de', notice: { code: 'demo' } }))
-      if (url.includes('/api/words')) return json([])
       if (url.includes('/api/suggest')) return json({ query: '', detected: [], suggestions: [] })
       return json({ error: url }, 404)
     })
@@ -54,6 +50,7 @@ describe('app language menu', () => {
   })
 
   it('switches the whole interface and remembers the choice', async () => {
+    await seedDevice([phraseEntry({ id: 'p1' }), phraseEntry({ id: 'p2', displayLemma: 'The dog ran.' })])
     const user = userEvent.setup()
     const view = renderApp()
     expect(await screen.findByRole('link', { name: 'Lexicon' })).toBeInTheDocument()

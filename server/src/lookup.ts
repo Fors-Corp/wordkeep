@@ -1,5 +1,5 @@
 import type { LookupResult, SenseDraft, TranslationDraft, WordForm } from '../../shared/types.ts'
-import { findWordId, normalizeLemma } from './db.ts'
+import { normalizeLemma } from './db.ts'
 import { fetchWikiExtras } from './etymology.ts'
 import { languageName } from './languages.ts'
 import { fetchNativeWiki } from './native-defs.ts'
@@ -195,7 +195,7 @@ async function lookupOnce(rawWord: string, lang: string): Promise<LookupResult |
   const cacheKey = `${lang}:${lemma}`
   const cached = lookupCache.get(cacheKey)
   if (cached) {
-    return { ...cached, existing: findWordId(lemma, lang) ? { id: findWordId(lemma, lang)! } : null }
+    return { ...cached, existing: null }
   }
 
   const guessedName = languageName(lang)
@@ -226,7 +226,7 @@ async function lookupOnce(rawWord: string, lang: string): Promise<LookupResult |
     forms: collectForms(usable),
     senses,
     translations: mergeTranslations(collectTranslations(usable, lang), wiki.translations),
-    existing: findWordId(lemma, lang) ? { id: findWordId(lemma, lang)! } : null,
+    existing: null,
   }
 
   cacheSet(cacheKey, result)

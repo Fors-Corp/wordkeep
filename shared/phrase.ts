@@ -109,3 +109,14 @@ export function phraseCardFor(analysis: PhraseAnalysis | null, turn: number): Ph
   }
   return { mode: 'meaning' }
 }
+
+/** One-line meaning used as the lexicon gloss and the review answer. */
+export function phraseGloss(analysis: PhraseAnalysis): string {
+  if (analysis.translation) return analysis.translation
+  if (analysis.idioms[0]?.meaning) return analysis.idioms[0].meaning
+  if (analysis.summary) return analysis.summary
+  const parts = analysis.tokens
+    .filter((token) => !token.punct && token.gloss)
+    .map((token) => `${token.text}: ${token.gloss.replace(/\.$/, '')}`)
+  return parts.join(' · ').slice(0, 400) || analysis.text
+}

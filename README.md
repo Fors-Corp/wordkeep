@@ -14,16 +14,21 @@ npm run dev
 - App: http://localhost:5173
 - API: http://127.0.0.1:3001
 
-SQLite lives at `server/data/wordkeep.db`. No account, no cloud.
+Your lexicon lives in the browser on your device (IndexedDB). No account needed. On an empty lexicon, **Load sample words** adds a linked English/Spanish/French/German cluster and a phrase to try Review and the Atlas.
 
-Optional:
+### Sync between devices
 
-```bash
-WORDKEEP_SEED=1 npm run dev:api   # demo cluster for Atlas
-npm run seed:graph -w server      # same, one-shot
-```
+In **Lexicon → Sync across devices**, **Turn on sync** creates a private 26-character code. Enter it on your other phones and computers (**I have a code**) and they share one lexicon. Changes merge per entry, and the newest edit wins. Deletions sync too.
 
-Set `WORDKEEP_ACCESS_KEY` to require a key before anyone can read or write the lexicon.
+- The code is the only secret: anyone with it can read and change that lexicon. The server stores only a hash of it.
+- Self-hosted (Docker, Fly, `npm run start`), sync records go in the server's SQLite file. Nothing to set up.
+- On Vercel, connect a [Turso](https://turso.tech) database (Vercel → Storage / Marketplace → Turso Cloud), which sets `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`, then redeploy. Without it, sync says it is not set up and everything else keeps working on the device.
+- Limits: 20,000 entries per code, 500 changes per request.
+- On iPhone, add Wordkeep to the Home Screen (Share → Add to Home Screen). Safari can clear website data after 7 days without a visit, and Home Screen apps are exempt. Sync is the backup either way.
+
+A server that stored words before 2.0 hands them to the first browser that opens it (`GET /api/legacy/export`).
+
+Set `WORDKEEP_ACCESS_KEY` to require a key before anyone can use the app or its API.
 
 Set `ANTHROPIC_API_KEY` to have Claude analyze phrases (structure, tense, idioms, translation, quiz questions). Without it, phrases get a word-by-word dictionary breakdown. `ANTHROPIC_MODEL` overrides the model (default `claude-sonnet-5-5`).
 
@@ -54,7 +59,7 @@ Each Claude analysis is a paid API call, so every visitor is rate limited:
 - Light, dark, or automatic theme from the switch in the header; text meets WCAG AA contrast in both.
 - The interface speaks Català, Español, Português, English, Deutsch, Français and Italiano (globe menu in the header). Phrase analyses use that language, or, with “Explain phrases in their own language”, the phrase’s language. Dictionary definitions stay as Wiktionary wrote them.
 - Review due cards with Again / Hard / Good / Easy (SM-2). Phrase cards rotate between meaning recall, a fill-the-gap cloze, and a grammar question.
-- Browse, filter, export, and import the lexicon as JSON.
+- Browse, filter, export, and import the lexicon as JSON (backups from 1.x import too).
 - See synonyms, antonyms, translations, and related words on a rotatable 3D atlas.
 - Discover: match five less-common words to their meanings.
 
@@ -78,7 +83,7 @@ Source: https://github.com/marcfs31/wordkeep
 
 Phrase analysis with Claude takes several seconds; on Vercel, raise the function's max duration if requests time out. For Claude on Vercel, add `ANTHROPIC_API_KEY` under Project → Settings → Environment Variables and connect Upstash Redis (see above).
 
-The Vercel Hobby deploy stores SQLite in `/tmp`, so kept words last for the life of a serverless instance. For a durable personal lexicon, run Docker on [Fly.io](https://fly.io) with the volume in `fly.toml` (`fly auth login` then `fly deploy`). Persistent SQLite on Vercel needs a Turso database (accept marketplace terms, then `vercel integration add tursocloud/database`).
+Kept words live on each device, so a Vercel deploy needs no database for them. Sync on Vercel needs Turso (see **Sync between devices**).
 
 ## Production
 
@@ -94,7 +99,7 @@ docker build -t wordkeep .
 docker run --rm -p 3001:3001 -v wordkeep-data:/data wordkeep
 ```
 
-Deploy to [Fly.io](https://fly.io) (free allowance, persistent volume for SQLite):
+Deploy to [Fly.io](https://fly.io) (free allowance, persistent volume for the sync records and Claude cache):
 
 ```bash
 fly launch --copy-config --yes

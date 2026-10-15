@@ -5,9 +5,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App'
 import { I18nProvider } from '../context/I18nContext'
 import { LanguageProvider } from '../context/LanguageContext'
-import { StatsProvider } from '../context/StatsContext'
+import { LexiconProvider } from '../context/LexiconContext'
 import { WordTrailProvider } from '../context/WordTrailContext'
-import { phraseFixture, phraseWord } from '../test/phrase-fixture'
+import { deviceEntries, phraseEntry, phraseFixture, seedDevice } from '../test/phrase-fixture'
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
@@ -18,11 +18,11 @@ function renderAt(path: string) {
     <MemoryRouter initialEntries={[path]}>
       <I18nProvider>
         <LanguageProvider>
-          <StatsProvider>
+          <LexiconProvider>
             <WordTrailProvider>
               <App />
             </WordTrailProvider>
-          </StatsProvider>
+          </LexiconProvider>
         </LanguageProvider>
       </I18nProvider>
     </MemoryRouter>,
@@ -30,7 +30,6 @@ function renderAt(path: string) {
 }
 
 let fetchMock: ReturnType<typeof vi.fn>
-let queue: unknown[] = []
 
 function calls(part: string) {
   return fetchMock.mock.calls.filter(([input]) => String(input).includes(part))
@@ -39,21 +38,11 @@ function calls(part: string) {
 describe('phrases', () => {
   beforeEach(() => {
     localStorage.clear()
-    queue = []
-    fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url.includes('/api/languages')) return json([{ code: 'en', name: 'English', words: 1 }])
-      if (url.includes('/api/stats')) {
-        return json({ dueToday: 1, newCount: 1, lexiconCount: 2, languageCount: 1, phraseCount: 1 })
-      }
       if (url.includes('/api/phrase/analyze')) return json(phraseFixture())
-      if (url.includes('/api/phrases') && init?.method === 'POST') {
-        return json({ alreadyKept: false, word: phraseWord() }, 201)
-      }
-      if (url.includes('/api/words/p1')) return json(phraseWord())
-      if (url.includes('/api/words')) return json([])
-      if (url.includes('/api/graph')) return json({ nodes: [], edges: [] })
-      if (url.includes('/api/review/queue')) return json(queue)
+      if (url.includes('/api/legacy/export')) return json({ version: 1, words: [], senses: [], links: [] })
       if (url.includes('/api/suggest')) return json({ query: '', detected: [], suggestions: [] })
       if (url.includes('/api/lookup')) return json({ error: 'No definitions found' }, 404)
       return json({ error: url }, 404)
@@ -82,10 +71,18 @@ describe('phrases', () => {
     expect(screen.getByText('Grammar by Claude')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Keep phrase for recall' }))
-    await waitFor(() => expect(calls('/api/phrases')).toHaveLength(1))
-    const body = JSON.parse(String(calls('/api/phrases')[0]?.[1]?.body)) as { text: string; lang: string }
-    expect(body).toMatchObject({ text: 'The cat sat.', lang: 'en' })
     expect(await screen.findByText('Re-analyze grammar')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'The cat sat.' })).toBeInTheDocument()
+    // Kept on the device, not sent to the server.
+    await waitFor(async () => {
+      const saved = await deviceEntries()
+      expect(saved.map((entry) => entry.displayLemma)).toEqual(['The cat sat.'])
+      expect(saved[0]?.kind).toBe('phrase')
+    })
+    expect(calls('/api/phrases')).toHaveLength(0)
+
+    // Its key words are linked in the entry's atlas list.
+    expect(screen.getByRole('link', { name: 'cat' })).toHaveAttribute('href', '/?q=cat&lang=en')
   })
 
   it('can force a multi-word query to look up as a word', async () => {
@@ -96,6 +93,14 @@ describe('phrases', () => {
     await user.click(screen.getByRole('button', { name: 'Word' }))
     await waitFor(() => expect(calls('/api/lookup')).toHaveLength(1))
     expect(String(calls('/api/lookup')[0]?.[0])).toContain('q=ice%20cream')
+  })
+
+  it('explains a missing entry in the app language instead of a raw “Not found”', async () => {
+    localStorage.setItem('wordkeep-locale', 'es')
+    renderAt('/words/gone')
+    expect(await screen.findByRole('heading', { name: 'No se ha encontrado esta entrada.' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Volver al léxico' })).toHaveAttribute('href', '/words')
+    expect(screen.queryByText('Not found')).toBeNull()
   })
 
   it('opens shared phrase links straight into the analysis', async () => {
@@ -117,7 +122,7 @@ describe('phrases', () => {
       ],
     })
     // "p4" with no repetitions lands on the grammar question (modes: meaning, cloze, grammar).
-    queue = [phraseWord({ id: 'p4', repetitions: 0, analysis })]
+    await seedDevice([phraseEntry({ id: 'p4', repetitions: 0 }, analysis)])
     const user = userEvent.setup()
     renderAt('/review')
     expect(await screen.findByText('¿Qué forma de «sit» es «sat»?')).toBeInTheDocument()
@@ -129,7 +134,7 @@ describe('phrases', () => {
 
   it('quizzes a phrase in review with a cloze card', async () => {
     // The card id seeds which quiz mode comes up; "p0" with no repetitions lands on cloze.
-    queue = [phraseWord({ id: 'p0', repetitions: 0 })]
+    await seedDevice([phraseEntry({ id: 'p0', repetitions: 0 })])
     const user = userEvent.setup()
     renderAt('/review')
     const heading = await screen.findByRole('heading', { level: 1, name: /_____/ })

@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import type { WordSummary } from '@shared/types'
+import type { ListOptions } from '@shared/lexicon'
+import { SampleButton } from '../components/SampleButton'
+import { SyncPanel } from '../components/SyncPanel'
 import { useI18n } from '../context/I18nContext'
 import { useLanguage } from '../context/LanguageContext'
+import { useLexicon } from '../context/LexiconContext'
 import { capitalize, type MessageKey } from '../i18n'
-import { api } from '../lib/api'
 import { formatDue, isRtl, statusLabel } from '../lib/format'
 
 const FILTERS = ['all', 'due', 'new', 'learning', 'review', 'mastered', 'archived'] as const
@@ -26,40 +28,28 @@ const FILTER_LABELS: Record<(typeof FILTERS)[number], MessageKey> = {
 
 export function Lexicon() {
   const { languages } = useLanguage()
-  const { t, languageName, locale } = useI18n()
+  const { t, tp, languageName, locale } = useI18n()
   const [params, setParams] = useSearchParams()
-  const [words, setWords] = useState<WordSummary[]>([])
+  const { device, lexicon, ready, persistent, now } = useLexicon()
   const [error, setError] = useState('')
-  const [backupBusy, setBackupBusy] = useState('')
+  const [message, setMessage] = useState('')
+  const [importing, setImporting] = useState(false)
   const q = params.get('q') ?? ''
   const status = params.get('status') ?? 'all'
   const language = params.get('language') ?? ''
   const kind = params.get('kind') ?? ''
 
-  function currentQuery(): Record<string, string | undefined> {
-    const query: Record<string, string | undefined> = {
-      q: q || undefined,
-      language: language || undefined,
-      kind: kind || undefined,
-    }
-    if (status === 'due') query.due = 'today'
-    else if (status !== 'all') query.status = status
-    return query
-  }
+  const words = useMemo(() => {
+    const options: ListOptions = { q, language, kind }
+    if (status === 'due') options.due = 'today'
+    else if (status !== 'all') options.status = status
+    return lexicon.list(options, now)
+  }, [lexicon, q, status, language, kind, now])
 
-  useEffect(() => {
-    api
-      .words(currentQuery())
-      .then(setWords)
-      .catch((err: Error) => setError(err.message))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, status, language, kind])
-
-  async function downloadBackup() {
-    setBackupBusy('export')
+  function downloadBackup() {
     setError('')
     try {
-      const backup = await api.exportLexicon()
+      const backup = lexicon.backup()
       const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' })
       const href = URL.createObjectURL(blob)
       const link = document.createElement('a')
@@ -69,22 +59,21 @@ export function Lexicon() {
       URL.revokeObjectURL(href)
     } catch (err) {
       setError(err instanceof Error ? err.message : t('lexicon.exportFailed'))
-    } finally {
-      setBackupBusy('')
     }
   }
 
   async function uploadBackup(file: File, mode: 'merge' | 'replace') {
-    setBackupBusy(mode)
+    if (!device) return
+    setImporting(true)
     setError('')
+    setMessage('')
     try {
-      const backup = JSON.parse(await file.text()) as unknown
-      await api.importLexicon(backup, mode)
-      setWords(await api.words(currentQuery()))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('lexicon.importFailed'))
+      const added = device.importBackup(JSON.parse(await file.text()) as unknown, mode)
+      setMessage(tp('lexicon.imported', added))
+    } catch {
+      setError(t('lexicon.importFailed'))
     } finally {
-      setBackupBusy('')
+      setImporting(false)
     }
   }
 
@@ -115,19 +104,19 @@ export function Lexicon() {
           />
           <button
             type="button"
-            onClick={() => void downloadBackup()}
+            onClick={() => downloadBackup()}
             className="rounded-full border border-rule px-3 py-1.5 text-sm"
-            disabled={Boolean(backupBusy)}
+            disabled={!ready}
           >
-            {backupBusy === 'export' ? t('lexicon.exporting') : t('lexicon.export')}
+            {t('lexicon.export')}
           </button>
           <label className="cursor-pointer rounded-full border border-rule px-3 py-1.5 text-sm">
-            {backupBusy === 'merge' || backupBusy === 'replace' ? t('lexicon.importing') : t('lexicon.import')}
+            {importing ? t('lexicon.importing') : t('lexicon.import')}
             <input
               type="file"
               accept="application/json,.json"
               className="hidden"
-              disabled={Boolean(backupBusy)}
+              disabled={!ready || importing}
               onChange={(event) => {
                 const file = event.target.files?.[0]
                 event.target.value = ''
@@ -199,12 +188,25 @@ export function Lexicon() {
         </div>
       )}
 
-      {error && <p className="text-accent">{error}</p>}
-
-      {words.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-rule px-4 py-12 text-center text-muted">
-          {t('lexicon.empty')}
+      {!persistent && (
+        <p className="mb-4 rounded-2xl border border-accent px-4 py-3 text-sm text-accent" role="alert">
+          {t('storage.memoryOnly')}
         </p>
+      )}
+      {error && <p className="mb-4 text-accent">{error}</p>}
+      {message && (
+        <p className="mb-4 text-sm text-saved" role="status">
+          {message}
+        </p>
+      )}
+
+      {!ready ? (
+        <p className="text-muted">{t('common.loading')}</p>
+      ) : words.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-rule px-4 py-12 text-center text-muted">
+          <p>{t('lexicon.empty')}</p>
+          {lexicon.size === 0 && <SampleButton className="mx-auto mt-5 block max-w-sm" />}
+        </div>
       ) : (
         <ul className="divide-y divide-rule rounded-3xl border border-rule bg-paper">
           {words.map((word) => (
@@ -233,6 +235,7 @@ export function Lexicon() {
           ))}
         </ul>
       )}
+      <SyncPanel />
     </div>
   )
 }

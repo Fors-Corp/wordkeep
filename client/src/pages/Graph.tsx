@@ -1,26 +1,17 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import type { GraphPayload, WordSummary } from '@shared/types'
 import { WordGraph } from '../components/WordGraph'
 import { useI18n } from '../context/I18nContext'
-import { api } from '../lib/api'
+import { useLexicon } from '../context/LexiconContext'
 
 export function GraphPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { t } = useI18n()
-  const [payload, setPayload] = useState<GraphPayload>({ nodes: [], edges: [] })
-  const [words, setWords] = useState<WordSummary[]>([])
+  const { lexicon } = useLexicon()
   const [mode, setMode] = useState<'word' | 'lexicon'>(id ? 'word' : 'lexicon')
-
-  useEffect(() => {
-    api.words().then(setWords).catch(() => undefined)
-  }, [])
-
-  useEffect(() => {
-    const wordId = mode === 'word' ? id : undefined
-    api.graph(wordId).then(setPayload).catch(() => undefined)
-  }, [id, mode])
+  const words = useMemo(() => lexicon.list(), [lexicon])
+  const payload = useMemo(() => lexicon.graph(mode === 'word' ? id : undefined), [lexicon, mode, id])
 
   const selected = words.find((word) => word.id === id)
   const languages = useMemo(

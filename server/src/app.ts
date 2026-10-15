@@ -2,30 +2,14 @@ import { Hono, type Context } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { cors } from 'hono/cors'
 import { secureHeaders } from 'hono/secure-headers'
-import type { Grade, KeepPhraseInput, KeepWordInput } from '../../shared/types.ts'
 import { visitorId } from './ai-limits.ts'
-import { exportLexicon, importLexicon } from './backup.ts'
-import { wordGraph } from './graph.ts'
+import { legacyExport } from './legacy.ts'
 import { getLanguages } from './languages.ts'
 import { lookupWord } from './lookup.ts'
-import { PhraseInputError, analyzePhrase, phraseGloss } from './phrase.ts'
+import { PhraseInputError, analyzePhrase } from './phrase.ts'
 import { buildRound, getBank } from './play.ts'
 import { suggestWords } from './suggest.ts'
-import {
-  deleteWord,
-  findWordId,
-  getWord,
-  gradeWord,
-  insertFromLookup,
-  insertPhrase,
-  listWords,
-  recentWords,
-  reviewQueue,
-  stats,
-  updatePhraseAnalysis,
-  updateWord,
-  wordKind,
-} from './words.ts'
+import { handleSync } from './sync.ts'
 
 export const app = new Hono()
 app.use(secureHeaders())
@@ -67,9 +51,7 @@ app.use('/api/*', async (c, next) => {
   return c.json({ error: 'Unauthorized' }, 401)
 })
 
-const GRADES: Grade[] = ['again', 'hard', 'good', 'easy']
-
-app.get('/api/health', (c) => c.json({ ok: true, version: '1.3.0' }))
+app.get('/api/health', (c) => c.json({ ok: true, version: '2.0.0' }))
 
 app.get('/api/session', (c) =>
   c.json({ ok: true, locked: Boolean(accessKey), signedIn: isSignedIn(c) }),
@@ -144,111 +126,6 @@ app.get('/api/phrase/analyze', async (c) => {
   }
 })
 
-app.post('/api/phrases', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as Partial<KeepPhraseInput>
-  const text = body.text?.trim()
-  const lang = body.lang?.trim()
-  if (!text || !lang) return c.json({ error: 'text and lang are required' }, 400)
-  try {
-    const analysis = await analyzePhrase(text, lang, body.explain?.trim() || 'en', {
-      visitor: visitorId(c),
-    })
-    if (analysis.existing) {
-      return c.json({ alreadyKept: true, word: getWord(analysis.existing.id) })
-    }
-    const word = insertPhrase(analysis, phraseGloss(analysis), body.note ?? '')
-    return c.json({ alreadyKept: false, word }, 201)
-  } catch (error) {
-    return phraseError(c, error)
-  }
-})
-
-app.post('/api/words/:id/reanalyze', async (c) => {
-  const id = c.req.param('id')
-  const kind = wordKind(id)
-  if (!kind) return c.json({ error: 'Not found' }, 404)
-  if (kind !== 'phrase') return c.json({ error: 'Only phrases can be re-analyzed' }, 400)
-  const current = getWord(id)!
-  const body = (await c.req.json().catch(() => ({}))) as { explain?: string }
-  try {
-    const analysis = await analyzePhrase(current.displayLemma, current.language, body.explain?.trim() || 'en', {
-      visitor: visitorId(c),
-    })
-    return c.json(updatePhraseAnalysis(id, analysis, phraseGloss(analysis)))
-  } catch (error) {
-    return phraseError(c, error)
-  }
-})
-
-app.get('/api/stats', (c) => c.json(stats()))
-
-app.get('/api/words', (c) => {
-  const q = c.req.query('q') ?? undefined
-  const status = c.req.query('status') ?? undefined
-  const due = c.req.query('due') ?? undefined
-  const language = c.req.query('language') ?? undefined
-  const kind = c.req.query('kind') ?? undefined
-  const archived = status === 'archived'
-  return c.json(listWords({ q, status, due, language, kind, archived }))
-})
-
-app.get('/api/words/recent', (c) => c.json(recentWords()))
-
-app.get('/api/words/:id', (c) => {
-  const word = getWord(c.req.param('id'))
-  if (!word) return c.json({ error: 'Not found' }, 404)
-  return c.json(word)
-})
-
-app.post('/api/words', async (c) => {
-  const body = (await c.req.json()) as KeepWordInput
-  const q = body.q?.trim()
-  const lang = body.lang?.trim()
-  if (!q || !lang) return c.json({ error: 'q and lang are required' }, 400)
-
-  const lookup = await lookupWord(q, lang)
-  if (!lookup) return c.json({ error: 'No definitions found' }, 404)
-
-  const existingId = lookup.existing?.id ?? findWordId(lookup.displayLemma, lookup.language)
-  if (existingId) {
-    const existing = getWord(existingId)
-    return c.json({ alreadyKept: true, word: existing })
-  }
-
-  const word = insertFromLookup(lookup, body.note ?? '', body.primarySenseIndex ?? 0)
-  return c.json({ alreadyKept: false, word }, 201)
-})
-
-app.patch('/api/words/:id', async (c) => {
-  const body = (await c.req.json()) as {
-    note?: string
-    primarySenseId?: string
-    etymology?: string
-    archived?: boolean
-  }
-  const word = updateWord(c.req.param('id'), body)
-  if (!word) return c.json({ error: 'Not found' }, 404)
-  return c.json(word)
-})
-
-app.delete('/api/words/:id', (c) => {
-  const ok = deleteWord(c.req.param('id'))
-  if (!ok) return c.json({ error: 'Not found' }, 404)
-  return c.json({ ok: true })
-})
-
-app.get('/api/review/queue', (c) => c.json(reviewQueue()))
-
-app.post('/api/review/:id/grade', async (c) => {
-  const body = (await c.req.json()) as { grade?: Grade }
-  if (!body.grade || !GRADES.includes(body.grade)) {
-    return c.json({ error: 'grade must be again | hard | good | easy' }, 400)
-  }
-  const word = gradeWord(c.req.param('id'), body.grade)
-  if (!word) return c.json({ error: 'Not found' }, 404)
-  return c.json(word)
-})
-
 app.get('/api/play/bank', async (c) => {
   const lang = c.req.query('lang')?.trim() || 'en'
   const bank = await getBank(lang)
@@ -274,31 +151,7 @@ app.get('/api/play/round', async (c) => {
   }
 })
 
-app.get('/api/graph', (c) => {
-  const wordId = c.req.query('wordId') ?? undefined
-  return c.json(wordGraph(wordId))
-})
+/** One-time hand-over of a lexicon the server kept before storage moved to the device. */
+app.get('/api/legacy/export', (c) => c.json(legacyExport() ?? { version: 1, words: [], senses: [], links: [] }))
 
-app.get('/api/export', (c) => {
-  const backup = exportLexicon()
-  c.header('Content-Disposition', `attachment; filename="wordkeep-backup.json"`)
-  return c.json(backup)
-})
-
-app.post('/api/import', async (c) => {
-  const body = (await c.req.json().catch(() => null)) as
-    | { mode?: string; backup?: unknown }
-    | LexiconBackupShape
-    | null
-  if (!body) return c.json({ error: 'Invalid JSON' }, 400)
-  const mode = 'mode' in body && body.mode === 'replace' ? 'replace' : 'merge'
-  const payload = body && 'backup' in body && body.backup ? body.backup : body
-  try {
-    return c.json(importLexicon(payload, mode))
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Import failed'
-    return c.json({ error: message }, 400)
-  }
-})
-
-type LexiconBackupShape = { version?: number; words?: unknown; senses?: unknown; links?: unknown }
+app.post('/api/sync', (c) => handleSync(c))
