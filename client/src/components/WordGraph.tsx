@@ -4,6 +4,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import type { GraphEdge, GraphNode } from '@shared/types'
 import { hashHue } from '../lib/format'
+import { useTheme } from '../context/ThemeContext'
 import { keptHref, lookupHref } from '../lib/paths'
 
 type Body = GraphNode & {
@@ -27,24 +28,24 @@ function cssVar(el: HTMLElement, name: string, fallback: string): string {
 }
 
 function nodeFill(node: GraphNode, root: HTMLElement): string {
-  if (node.kind === 'center') return cssVar(root, '--color-ink', '#f0e8dc')
-  if (node.kind === 'synonym') return cssVar(root, '--color-saved', '#7dbaa8')
-  if (node.kind === 'antonym') return cssVar(root, '--color-accent', '#e07a66')
-  if (node.kind === 'translation') return cssVar(root, '--color-gold', '#d4b072')
-  if (node.kind === 'related') return cssVar(root, '--color-related', '#8eb4d4')
-  if (node.kind === 'etymology') return cssVar(root, '--color-etymology', '#c49bc8')
-  if (node.kind === 'phrase') return cssVar(root, '--color-phrase', '#b5c46a')
+  if (node.kind === 'center') return cssVar(root, '--wk-ink', '#f0e8dc')
+  if (node.kind === 'synonym') return cssVar(root, '--wk-saved', '#7dbaa8')
+  if (node.kind === 'antonym') return cssVar(root, '--wk-accent', '#e07a66')
+  if (node.kind === 'translation') return cssVar(root, '--wk-gold', '#d4b072')
+  if (node.kind === 'related') return cssVar(root, '--wk-related', '#8eb4d4')
+  if (node.kind === 'etymology') return cssVar(root, '--wk-etymology', '#c49bc8')
+  if (node.kind === 'phrase') return cssVar(root, '--wk-phrase', '#b5c46a')
   return `hsl(${hashHue(node.language)}, 42%, 46%)`
 }
 
 function relationColor(relation: string, root: HTMLElement): string {
-  if (relation === 'synonym') return cssVar(root, '--color-saved', '#7dbaa8')
-  if (relation === 'antonym') return cssVar(root, '--color-accent', '#e07a66')
-  if (relation === 'translation') return cssVar(root, '--color-gold', '#d4b072')
-  if (relation === 'related') return cssVar(root, '--color-related', '#8eb4d4')
-  if (relation === 'etymology') return cssVar(root, '--color-etymology', '#c49bc8')
-  if (relation === 'phrase') return cssVar(root, '--color-phrase', '#b5c46a')
-  return cssVar(root, '--color-rule', '#3a332c')
+  if (relation === 'synonym') return cssVar(root, '--wk-saved', '#7dbaa8')
+  if (relation === 'antonym') return cssVar(root, '--wk-accent', '#e07a66')
+  if (relation === 'translation') return cssVar(root, '--wk-gold', '#d4b072')
+  if (relation === 'related') return cssVar(root, '--wk-related', '#8eb4d4')
+  if (relation === 'etymology') return cssVar(root, '--wk-etymology', '#c49bc8')
+  if (relation === 'phrase') return cssVar(root, '--wk-phrase', '#b5c46a')
+  return cssVar(root, '--wk-rule', '#3a332c')
 }
 
 function isDashed(relation: string): boolean {
@@ -134,17 +135,19 @@ function stepForce(bodies: Body[], links: Array<{ source: Body; target: Body }>)
   }
 }
 
-function makeLabel(lemma: string, lang: string, ink: string, muted: string): THREE.Sprite {
+function makeLabel(lemma: string, lang: string, ink: string, muted: string, plate: string): THREE.Sprite {
   const canvas = document.createElement('canvas')
   canvas.width = 384
   canvas.height = 96
   const ctx = canvas.getContext('2d')
   if (ctx) {
     ctx.clearRect(0, 0, canvas.width, canvas.height)
-    ctx.fillStyle = 'rgba(18, 14, 12, 0.78)'
+    ctx.globalAlpha = 0.88
+    ctx.fillStyle = plate
     ctx.beginPath()
     ctx.roundRect(12, 8, 360, 80, 16)
     ctx.fill()
+    ctx.globalAlpha = 1
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.font = '600 34px Newsreader, Georgia, serif'
@@ -183,6 +186,7 @@ export function WordGraph({
   onLookup?: (lemma: string, language: string) => void
 }) {
   const navigate = useNavigate()
+  const { resolved: theme } = useTheme()
   const wrapRef = useRef<HTMLDivElement>(null)
   const hostRef = useRef<HTMLDivElement>(null)
 
@@ -206,9 +210,10 @@ export function WordGraph({
     if (!host || !wrap || !trimmed.nodes.length) return
 
     const width = host.clientWidth || 640
-    const ink = cssVar(wrap, '--color-ink', '#f0e8dc')
-    const muted = cssVar(wrap, '--color-muted', '#b3a99b')
-    const paper = cssVar(wrap, '--color-paper-2', '#201b16')
+    const ink = cssVar(wrap, '--wk-ink', '#f0e8dc')
+    const muted = cssVar(wrap, '--wk-muted', '#b3a99b')
+    const paper = cssVar(wrap, '--wk-paper-2', '#201b16')
+    const plate = cssVar(wrap, '--wk-paper', '#161310')
 
     const scene = new THREE.Scene()
     scene.background = new THREE.Color(paper)
@@ -271,7 +276,7 @@ export function WordGraph({
       group.add(mesh)
       meshes.push(mesh)
 
-      const label = makeLabel(body.label, body.language, ink, muted)
+      const label = makeLabel(body.label, body.language, ink, muted, plate)
       label.scale.set(labelW, labelH, 1)
       label.position.set(body.x, body.y + radius + labelH * 0.15, body.z)
       group.add(label)
@@ -414,7 +419,7 @@ export function WordGraph({
       renderer.dispose()
       host.replaceChildren()
     }
-  }, [trimmed, height, navigate, onLookup])
+  }, [trimmed, height, navigate, onLookup, theme])
 
   if (!nodes.length) {
     return (
@@ -435,41 +440,41 @@ export function WordGraph({
         className="cursor-grab active:cursor-grabbing"
         style={{ height, touchAction: 'none', userSelect: 'none' }}
       />
-      <p className="border-t border-rule px-3 py-1.5 text-center text-[11px] text-muted">
+      <p className="border-t border-rule px-3 py-1.5 text-center text-xs text-muted">
         Drag to rotate · scroll to zoom · click a node to open
       </p>
-      <div className="flex flex-wrap gap-3 border-t border-rule px-3 py-2 text-[11px] uppercase tracking-wide text-muted">
+      <div className="flex flex-wrap gap-3 border-t border-rule px-3 py-2 text-xs uppercase tracking-wide text-muted">
         <span className="flex items-center gap-1">
-          <i className="inline-block h-2 w-4 rounded-sm" style={{ background: 'var(--color-saved)' }} />
+          <i className="inline-block h-2 w-4 rounded-sm" style={{ background: 'var(--wk-saved)' }} />
           synonym
         </span>
         <span className="flex items-center gap-1">
           <i
             className="inline-block h-0.5 w-4"
-            style={{ borderTop: '2px dashed var(--color-accent)' }}
+            style={{ borderTop: '2px dashed var(--wk-accent)' }}
           />
           antonym
         </span>
         <span className="flex items-center gap-1">
-          <i className="inline-block h-2 w-4 rounded-sm" style={{ background: 'var(--color-gold)' }} />
+          <i className="inline-block h-2 w-4 rounded-sm" style={{ background: 'var(--wk-gold)' }} />
           translation
         </span>
         <span className="flex items-center gap-1">
           <i
             className="inline-block h-0.5 w-4"
-            style={{ borderTop: '2px dotted var(--color-related)' }}
+            style={{ borderTop: '2px dotted var(--wk-related)' }}
           />
           related
         </span>
         <span className="flex items-center gap-1">
           <i
             className="inline-block h-0.5 w-4"
-            style={{ borderTop: '2px dashed var(--color-etymology)' }}
+            style={{ borderTop: '2px dashed var(--wk-etymology)' }}
           />
           etymology
         </span>
         <span className="flex items-center gap-1">
-          <i className="inline-block h-2 w-4 rounded-sm" style={{ background: 'var(--color-phrase)' }} />
+          <i className="inline-block h-2 w-4 rounded-sm" style={{ background: 'var(--wk-phrase)' }} />
           phrase
         </span>
       </div>

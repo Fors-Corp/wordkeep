@@ -453,7 +453,8 @@ export function insertPhrase(analysis: PhraseAnalysis, gloss: string, note: stri
 
   const seen = new Set<string>()
   for (const token of analysis.tokens) {
-    if (!token.known || !isContentToken(token)) continue
+    const trusted = token.known || (analysis.source === 'claude' && token.partOfSpeech)
+    if (!trusted || !isContentToken(token)) continue
     const key = normalizeLemma(token.lemma, analysis.language)
     if (!key || key === lemma || seen.has(key)) continue
     seen.add(key)

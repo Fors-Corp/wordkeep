@@ -140,6 +140,31 @@ describe('phrase API', () => {
     assert.equal(centered.nodes.find((node) => node.id === `word:${phrase.id}`)?.kind, 'phrase')
   })
 
+  it('shows a phrase’s unkept words in the whole-lexicon atlas', async () => {
+    const created = await post('/api/phrases', { text: 'The cat sat.', lang: 'en' })
+    const { word: phrase } = (await created.json()) as { word: WordDetail }
+    const atlas = (await (await app.request('/api/graph')).json()) as {
+      nodes: Array<{ id: string; kind: string; label: string; wordId: string | null }>
+      edges: Array<{ source: string; target: string; relation: string }>
+    }
+    const ghosts = atlas.nodes.filter((node) => node.kind === 'word')
+    assert.deepEqual(ghosts.map((node) => node.label).sort(), ['cat', 'sit'])
+    assert.ok(ghosts.every((node) => node.wordId === null))
+    for (const ghost of ghosts) {
+      assert.ok(
+        atlas.edges.some(
+          (edge) => edge.source === `word:${phrase.id}` && edge.target === ghost.id && edge.relation === 'phrase',
+        ),
+      )
+    }
+    assert.ok(!atlas.nodes.some((node) => node.label === 'the'))
+
+    const cat = insertFromLookup(lookupFixture({ lemma: 'cat', displayLemma: 'cat', translations: [] }), '', 0)
+    const after = (await (await app.request('/api/graph')).json()) as { nodes: Array<{ id: string; kind: string }> }
+    assert.ok(after.nodes.some((node) => node.id === `word:${cat.id}`))
+    assert.ok(!after.nodes.some((node) => node.id === 'ghost:en:cat'))
+  })
+
   it('reanalyze rejects words and unknown ids', async () => {
     const happy = insertFromLookup(lookupFixture(), '', 0)
     assert.equal((await post(`/api/words/${happy.id}/reanalyze`, {})).status, 400)

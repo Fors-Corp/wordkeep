@@ -24,6 +24,12 @@ describe('PhraseAnalysisView', () => {
     expect(screen.getByText('One clause.')).toBeInTheDocument()
     expect(screen.getByText('← sit')).toBeInTheDocument()
     expect(screen.getByText('The action.')).toBeInTheDocument()
+
+    const key = screen.getByLabelText('Part-of-speech key')
+    expect(key).toHaveTextContent('art article')
+    expect(key).toHaveTextContent('n noun')
+    expect(key).toHaveTextContent('v verb')
+    expect(key).not.toHaveTextContent('punctuation')
   })
 
   it('compact mode hides the word list and can render without links', () => {

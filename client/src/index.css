@@ -1,21 +1,96 @@
 @import "tailwindcss";
 
-@theme {
+/*
+ * Colors live in plain custom properties so the light and dark themes can
+ * swap them at runtime. Tailwind utilities point at them through @theme inline.
+ * data-theme="light" | "dark" on <html> pins a theme; without it the device
+ * setting decides. Every text color keeps at least 4.5:1 contrast (WCAG AA)
+ * on paper, paper-2 and chip in both themes.
+ */
+:root {
+  color-scheme: light;
+  --wk-paper: #f5f1e8;
+  --wk-paper-2: #ece5d8;
+  --wk-ink: #1c1712;
+  --wk-muted: #5c5449;
+  --wk-rule: #cfc4b3;
+  --wk-accent: #8f2d1f;
+  --wk-accent-2: #b03f29;
+  --wk-gold: #7a5718;
+  --wk-saved: #2f5d50;
+  --wk-related: #3d5c7a;
+  --wk-etymology: #6b3f6e;
+  --wk-phrase: #4a5816;
+  --wk-chip: #e6ddcd;
+  --wk-selection: #e7c9b8;
+  --wk-shadow: rgba(28, 23, 18, 0.45);
+  --wk-glow: rgba(166, 124, 50, 0.08);
+  --wk-wash-top: #f8f4ec;
+  --wk-wash-bottom: #efe8db;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --wk-paper: #161310;
+  --wk-paper-2: #211c17;
+  --wk-ink: #f2ebdf;
+  --wk-muted: #c2b8aa;
+  --wk-rule: #433a32;
+  --wk-accent: #ec8b77;
+  --wk-accent-2: #f4a896;
+  --wk-gold: #ddbb7e;
+  --wk-saved: #86c4b1;
+  --wk-related: #9cc0de;
+  --wk-etymology: #cfa8d3;
+  --wk-phrase: #bfcd75;
+  --wk-chip: #2d2620;
+  --wk-selection: #5a3a2e;
+  --wk-shadow: rgba(0, 0, 0, 0.7);
+  --wk-glow: rgba(224, 122, 102, 0.12);
+  --wk-wash-top: #1a1612;
+  --wk-wash-bottom: #161310;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --wk-paper: #161310;
+    --wk-paper-2: #211c17;
+    --wk-ink: #f2ebdf;
+    --wk-muted: #c2b8aa;
+    --wk-rule: #433a32;
+    --wk-accent: #ec8b77;
+    --wk-accent-2: #f4a896;
+    --wk-gold: #ddbb7e;
+    --wk-saved: #86c4b1;
+    --wk-related: #9cc0de;
+    --wk-etymology: #cfa8d3;
+    --wk-phrase: #bfcd75;
+    --wk-chip: #2d2620;
+    --wk-selection: #5a3a2e;
+    --wk-shadow: rgba(0, 0, 0, 0.7);
+    --wk-glow: rgba(224, 122, 102, 0.12);
+    --wk-wash-top: #1a1612;
+    --wk-wash-bottom: #161310;
+  }
+}
+
+@theme inline {
   --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Newsreader", ui-serif, Georgia, "Times New Roman", serif;
-  --color-paper: #f3eee4;
-  --color-paper-2: #ebe4d6;
-  --color-ink: #1c1712;
-  --color-muted: #6f675c;
-  --color-rule: #d8cfc2;
-  --color-accent: #8f2d1f;
-  --color-accent-2: #c44932;
-  --color-gold: #a67c32;
-  --color-saved: #2f5d50;
-  --color-related: #3d5c7a;
-  --color-etymology: #6b3f6e;
-  --color-phrase: #5a6b1f;
-  --color-chip: #e7dfd1;
+  --color-paper: var(--wk-paper);
+  --color-paper-2: var(--wk-paper-2);
+  --color-ink: var(--wk-ink);
+  --color-muted: var(--wk-muted);
+  --color-rule: var(--wk-rule);
+  --color-accent: var(--wk-accent);
+  --color-accent-2: var(--wk-accent-2);
+  --color-gold: var(--wk-gold);
+  --color-saved: var(--wk-saved);
+  --color-related: var(--wk-related);
+  --color-etymology: var(--wk-etymology);
+  --color-phrase: var(--wk-phrase);
+  --color-chip: var(--wk-chip);
 }
 
 @layer base {
@@ -27,40 +102,21 @@
 
   body {
     margin: 0;
-    background: var(--color-paper);
-    color: var(--color-ink);
+    background-color: var(--wk-paper);
+    color: var(--wk-ink);
     font-family: var(--font-sans);
     background-image:
-      radial-gradient(ellipse at top, rgba(166, 124, 50, 0.08), transparent 55%),
-      linear-gradient(180deg, #f7f2e9 0%, #f3eee4 40%, #efe8db 100%);
+      radial-gradient(ellipse at top, var(--wk-glow), transparent 55%),
+      linear-gradient(180deg, var(--wk-wash-top) 0%, var(--wk-paper) 40%, var(--wk-wash-bottom) 100%);
   }
 
   ::selection {
-    background: #e7c9b8;
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  @theme {
-    --color-paper: #161310;
-    --color-paper-2: #201b16;
-    --color-ink: #f0e8dc;
-    --color-muted: #b3a99b;
-    --color-rule: #3a332c;
-    --color-accent: #e07a66;
-    --color-accent-2: #f0a090;
-    --color-gold: #d4b072;
-    --color-saved: #7dbaa8;
-    --color-related: #8eb4d4;
-    --color-etymology: #c49bc8;
-    --color-phrase: #b5c46a;
-    --color-chip: #2a241e;
+    background: var(--wk-selection);
   }
 
-  body {
-    background-image:
-      radial-gradient(ellipse at top, rgba(224, 122, 102, 0.12), transparent 50%),
-      linear-gradient(180deg, #1a1612 0%, #161310 100%);
+  :focus-visible {
+    outline: 2px solid var(--wk-accent);
+    outline-offset: 2px;
   }
 }
 

@@ -125,7 +125,7 @@ export function WordPage() {
 
         {word.etymology && (
           <blockquote className="mt-6 border-l-2 border-gold pl-4 leading-relaxed text-muted">
-            <span className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-gold">
+            <span className="mb-1 block text-xs uppercase tracking-[0.18em] text-gold">
               Etymology
             </span>
             {word.etymology}

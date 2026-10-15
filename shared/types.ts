@@ -109,7 +109,16 @@ export type GraphNode = {
   languageName: string
   saved: boolean
   wordId: string | null
-  kind: 'center' | 'translation' | 'synonym' | 'antonym' | 'related' | 'etymology' | 'saved' | 'phrase'
+  kind:
+    | 'center'
+    | 'translation'
+    | 'synonym'
+    | 'antonym'
+    | 'related'
+    | 'etymology'
+    | 'saved'
+    | 'phrase'
+    | 'word'
 }
 
 export type GraphEdge = {

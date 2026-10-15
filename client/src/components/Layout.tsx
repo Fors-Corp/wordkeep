@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useStats } from '../context/StatsContext'
 import { LanguageSwitcher } from './LanguageSwitcher'
+import { ThemeSwitcher } from './ThemeSwitcher'
 import { WordTrailBar } from './WordTrailBar'
 
 const SUPPORT_URL = 'https://marcfors.com/donate?from=wordkeep'
@@ -37,7 +38,8 @@ export function Layout() {
             Discover
           </NavLink>
         </nav>
-        <div className="ml-auto">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <ThemeSwitcher />
           <LanguageSwitcher />
         </div>
       </header>

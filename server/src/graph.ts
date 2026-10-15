@@ -101,21 +101,46 @@ export function wordGraph(centerId?: string): GraphPayload {
 
   const links = db
     .prepare(
-      'SELECT from_word_id, to_word_id, to_lemma, to_language, relation FROM word_links',
+      'SELECT from_word_id, to_word_id, to_lemma, to_language, to_language_name, relation FROM word_links',
     )
     .all() as Array<{
     from_word_id: string
     to_word_id: string | null
     to_lemma: string
     to_language: string
+    to_language_name: string
     relation: LinkRelation
   }>
+
+  const phraseIds = new Set(words.filter((row) => row.kind === 'phrase').map((row) => row.id))
 
   for (const link of links) {
     const targetId =
       link.to_word_id ?? byKey.get(`${link.to_language}:${link.to_lemma}`) ?? null
-    if (!targetId) continue
-    pushEdge(link.from_word_id, targetId, link.relation || 'translation')
+    if (targetId) {
+      pushEdge(link.from_word_id, targetId, link.relation || 'translation')
+      continue
+    }
+    // Words of a kept phrase show up even when they were never kept themselves.
+    if (link.relation !== 'phrase' || !phraseIds.has(link.from_word_id)) continue
+    const ghostId = `ghost:${link.to_language}:${link.to_lemma}`
+    if (!nodeIds.has(ghostId)) {
+      nodeIds.add(ghostId)
+      nodes.push({
+        id: ghostId,
+        label: link.to_lemma,
+        language: link.to_language,
+        languageName: link.to_language_name,
+        saved: false,
+        wordId: null,
+        kind: 'word',
+      })
+    }
+    const source = `word:${link.from_word_id}`
+    const key = [source, ghostId, 'phrase'].sort().join('|')
+    if (edgeSeen.has(key)) continue
+    edgeSeen.add(key)
+    edges.push({ source, target: ghostId, relation: 'phrase' })
   }
 
   const senseRows = db

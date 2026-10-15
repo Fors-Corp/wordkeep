@@ -64,7 +64,7 @@ describe('phrases', () => {
     await user.type(box, 'The cat sat.')
 
     expect(screen.getByRole('button', { name: 'Phrase' })).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.getByText(/Press Enter to analyze/)).toBeInTheDocument()
+    expect(screen.getByText(/Press Enter or Analyze/)).toBeInTheDocument()
     await new Promise((resolve) => setTimeout(resolve, 600))
     expect(calls('/api/phrase/analyze')).toHaveLength(0)
     expect(calls('/api/lookup')).toHaveLength(0)

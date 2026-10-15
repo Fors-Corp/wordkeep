@@ -3,6 +3,26 @@ import type { PhraseAnalysis, PhraseToken } from '@shared/types'
 import { lookupHref } from '../lib/paths'
 import { isRtl, posShort, posTone } from '../lib/format'
 
+/** Spells out the abbreviations used in this phrase, in their colors. */
+function PosKey({ tokens }: { tokens: PhraseToken[] }) {
+  const seen = new Map<string, string>()
+  for (const token of tokens) {
+    const pos = token.partOfSpeech.trim().toLowerCase()
+    if (token.punct || !pos || seen.has(pos)) continue
+    seen.set(pos, posShort(pos))
+  }
+  if (!seen.size) return null
+  return (
+    <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted" aria-label="Part-of-speech key">
+      {[...seen].map(([pos, short]) => (
+        <span key={pos}>
+          <span className={`font-mono uppercase ${posTone(pos)}`}>{short}</span> {pos}
+        </span>
+      ))}
+    </p>
+  )
+}
+
 function TokenChip({
   token,
   language,
@@ -19,9 +39,9 @@ function TokenChip({
   }
   const body = (
     <>
-      <span className="block h-4 text-[10px] uppercase tracking-[0.12em] text-muted">{token.role}</span>
+      <span className="block h-4 text-xs uppercase tracking-[0.12em] text-muted">{token.role}</span>
       <span className="lemma block text-2xl leading-tight">{token.text}</span>
-      <span className={`block font-mono text-[10px] uppercase ${posTone(token.partOfSpeech)}`}>
+      <span className={`block font-mono text-xs uppercase ${posTone(token.partOfSpeech)}`}>
         {token.partOfSpeech ? posShort(token.partOfSpeech) : '?'}
       </span>
     </>
@@ -53,7 +73,7 @@ function Facts({ analysis }: { analysis: PhraseAnalysis }) {
     <dl className="mt-4 flex flex-wrap gap-2 text-sm">
       {facts.map(([label, value]) => (
         <div key={label} className="rounded-full bg-chip px-3 py-1">
-          <dt className="inline text-[11px] uppercase tracking-[0.14em] text-muted">{label} </dt>
+          <dt className="inline text-xs uppercase tracking-[0.14em] text-muted">{label} </dt>
           <dd className="inline">{value}</dd>
         </div>
       ))}
@@ -92,10 +112,11 @@ export function PhraseAnalysisView({
           />
         ))}
       </div>
+      <PosKey tokens={analysis.tokens} />
 
       {analysis.translation && (
         <p className="mt-4 text-lg leading-relaxed">
-          <span className="mr-2 text-[11px] uppercase tracking-[0.16em] text-gold">Meaning</span>
+          <span className="mr-2 text-xs uppercase tracking-[0.16em] text-gold">Meaning</span>
           {analysis.translation}
         </p>
       )}
@@ -122,7 +143,7 @@ export function PhraseAnalysisView({
           <ul className="space-y-2 text-sm">
             {analysis.clauses.map((clause, index) => (
               <li key={`${clause.text}-${index}`} className="rounded-xl bg-paper-2 px-3 py-2">
-                <span className="mr-2 text-[11px] uppercase tracking-[0.14em] text-accent">{clause.type}</span>
+                <span className="mr-2 text-xs uppercase tracking-[0.14em] text-accent">{clause.type}</span>
                 <span className="lemma text-base">{clause.text}</span>
                 {clause.explanation && <p className="mt-1 text-muted">{clause.explanation}</p>}
               </li>
@@ -160,7 +181,11 @@ export function PhraseAnalysisView({
         </div>
       )}
 
-      {analysis.note && <p className="mt-4 text-xs text-muted">{analysis.note}</p>}
+      {analysis.note && (
+        <p role="note" className="mt-4 rounded-xl bg-chip px-3 py-2 text-sm text-muted">
+          {analysis.note}
+        </p>
+      )}
     </div>
   )
 }

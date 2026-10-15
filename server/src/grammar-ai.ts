@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod'
 import { z } from 'zod'
 
-const DEFAULT_MODEL = 'claude-opus-5-5'
+const DEFAULT_MODEL = 'claude-sonnet-5-5'
 
 const GrammarSchema = z.object({
   translation: z.string(),
@@ -73,6 +73,10 @@ export function claudeConfigured(): boolean {
   return Boolean(process.env.ANTHROPIC_API_KEY?.trim() || process.env.ANTHROPIC_AUTH_TOKEN?.trim())
 }
 
+export function grammarModel(): string {
+  return process.env.ANTHROPIC_MODEL?.trim() || DEFAULT_MODEL
+}
+
 export function grammarAnalyzerActive(): boolean {
   return Boolean(override) || claudeConfigured()
 }
@@ -106,7 +110,7 @@ export async function analyzeGrammar(request: GrammarRequest): Promise<ClaudeGra
   client ??= new Anthropic()
   const response = await client.beta.messages.parse(
     {
-      model: process.env.ANTHROPIC_MODEL?.trim() || DEFAULT_MODEL,
+      model: grammarModel(),
       max_tokens: 16000,
       betas: ['server-side-fallback-2026-07-01'],
       fallbacks: 'default',

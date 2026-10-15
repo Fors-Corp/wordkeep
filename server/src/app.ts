@@ -3,6 +3,7 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { cors } from 'hono/cors'
 import { secureHeaders } from 'hono/secure-headers'
 import type { Grade, KeepPhraseInput, KeepWordInput } from '../../shared/types.ts'
+import { visitorId } from './ai-limits.ts'
 import { exportLexicon, importLexicon } from './backup.ts'
 import { wordGraph } from './graph.ts'
 import { getLanguages } from './languages.ts'
@@ -68,7 +69,7 @@ app.use('/api/*', async (c, next) => {
 
 const GRADES: Grade[] = ['again', 'hard', 'good', 'easy']
 
-app.get('/api/health', (c) => c.json({ ok: true, version: '1.1.0' }))
+app.get('/api/health', (c) => c.json({ ok: true, version: '1.2.0' }))
 
 app.get('/api/session', (c) =>
   c.json({ ok: true, locked: Boolean(accessKey), signedIn: isSignedIn(c) }),
@@ -135,7 +136,7 @@ app.get('/api/phrase/analyze', async (c) => {
   const explain = c.req.query('explain')?.trim() || 'en'
   if (!q) return c.json({ error: 'Missing q' }, 400)
   try {
-    return c.json(await analyzePhrase(q, lang, explain))
+    return c.json(await analyzePhrase(q, lang, explain, { visitor: visitorId(c) }))
   } catch (error) {
     return phraseError(c, error)
   }
@@ -147,7 +148,9 @@ app.post('/api/phrases', async (c) => {
   const lang = body.lang?.trim()
   if (!text || !lang) return c.json({ error: 'text and lang are required' }, 400)
   try {
-    const analysis = await analyzePhrase(text, lang, body.explain?.trim() || 'en')
+    const analysis = await analyzePhrase(text, lang, body.explain?.trim() || 'en', {
+      visitor: visitorId(c),
+    })
     if (analysis.existing) {
       return c.json({ alreadyKept: true, word: getWord(analysis.existing.id) })
     }
@@ -166,7 +169,9 @@ app.post('/api/words/:id/reanalyze', async (c) => {
   const current = getWord(id)!
   const body = (await c.req.json().catch(() => ({}))) as { explain?: string }
   try {
-    const analysis = await analyzePhrase(current.displayLemma, current.language, body.explain?.trim() || 'en')
+    const analysis = await analyzePhrase(current.displayLemma, current.language, body.explain?.trim() || 'en', {
+      visitor: visitorId(c),
+    })
     return c.json(updatePhraseAnalysis(id, analysis, phraseGloss(analysis)))
   } catch (error) {
     return phraseError(c, error)

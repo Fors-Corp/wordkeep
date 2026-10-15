@@ -48,7 +48,7 @@ export function LanguageSwitcher() {
         aria-haspopup="listbox"
         aria-expanded={open}
       >
-        <span className="font-mono text-[11px] uppercase tracking-wide text-gold">
+        <span className="font-mono text-xs uppercase tracking-wide text-gold">
           {lookupLang}
         </span>
         <span className="truncate">{current?.name ?? 'Language'}</span>
@@ -94,7 +94,7 @@ export function LanguageSwitcher() {
                           : item.code}
                       </span>
                     </span>
-                    <span className="font-mono text-[11px] text-muted">
+                    <span className="font-mono text-xs text-muted">
                       {item.words > 0 ? item.words.toLocaleString() : item.code}
                     </span>
                   </button>

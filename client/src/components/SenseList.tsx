@@ -47,7 +47,7 @@ export function SenseList({
                       <p className="font-medium">{sense.definition}</p>
                     )}
                     {selected && (
-                      <span className="shrink-0 text-[11px] uppercase tracking-wide text-gold">
+                      <span className="shrink-0 text-xs uppercase tracking-wide text-gold">
                         card face
                       </span>
                     )}

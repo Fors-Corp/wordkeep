@@ -207,12 +207,12 @@ export function Lexicon() {
                   {word.displayLemma}
                 </span>
                 {word.kind === 'phrase' && (
-                  <span className="rounded-full bg-chip px-2 py-0.5 text-[10px] uppercase tracking-wide text-phrase">
+                  <span className="rounded-full bg-chip px-2 py-0.5 text-xs uppercase tracking-wide text-phrase">
                     phrase
                   </span>
                 )}
-                <span className="flex-1 text-sm text-muted line-clamp-1">{word.gloss}</span>
-                <span className="font-mono text-[10px] uppercase text-gold">{word.language}</span>
+                <span className="min-w-48 flex-1 text-sm text-muted line-clamp-2 sm:line-clamp-1">{word.gloss}</span>
+                <span className="font-mono text-xs uppercase text-gold">{word.language}</span>
                 <span className="text-xs text-muted">{statusLabel(word.status)}</span>
                 <span className="text-xs text-accent">{formatDue(word.dueAt)}</span>
               </Link>

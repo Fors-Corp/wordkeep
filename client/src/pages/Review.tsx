@@ -54,7 +54,7 @@ function PhraseBack({ card, quiz }: { card: WordDetail; quiz: PhraseCard }) {
       )}
       {quiz.mode === 'grammar' && (
         <p className="text-lg leading-relaxed">
-          <span className="mr-2 text-[11px] uppercase tracking-[0.16em] text-accent">Answer</span>
+          <span className="mr-2 text-xs uppercase tracking-[0.16em] text-accent">Answer</span>
           {quiz.answer}
         </p>
       )}
@@ -171,7 +171,7 @@ export function Review() {
         <button
           type="button"
           onClick={() => setFlipped((value) => !value)}
-          className={`card-face relative min-h-[340px] w-full rounded-3xl border border-rule bg-paper text-left shadow-[0_30px_60px_-40px_rgba(28,23,18,0.7)] ${
+          className={`card-face relative min-h-[340px] w-full rounded-3xl border border-rule bg-paper text-left shadow-[0_30px_60px_-40px_var(--wk-shadow)] ${
             flipped ? 'is-flipped' : ''
           }`}
         >
@@ -212,7 +212,12 @@ export function Review() {
         </button>
       </div>
 
-      <div className={`mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4 ${flipped ? '' : 'opacity-40'}`}>
+      <p className="mt-6 text-center text-sm text-muted">
+        {flipped
+          ? 'How well did you remember it? The next review is scheduled from your answer.'
+          : 'Recall the answer, then tap the card or press Space to check.'}
+      </p>
+      <div className={`mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 ${flipped ? '' : 'opacity-40'}`}>
         {GRADE_META.map((item) => (
           <button
             key={item.grade}

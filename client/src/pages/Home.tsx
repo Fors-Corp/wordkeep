@@ -223,6 +223,7 @@ export function Home() {
           )}
         </form>
         <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted">Look up as</span>
           <div className="inline-flex rounded-full bg-chip p-0.5 text-sm" role="group" aria-label="Look up as">
             {(['word', 'phrase'] as const).map((item) => (
               <button
@@ -256,7 +257,7 @@ export function Home() {
           {isPhrase
             ? busy
               ? 'Analyzing grammar…'
-              : 'Press Enter to analyze the phrase word by word.'
+              : 'Press Enter or Analyze to see what each word does in the phrase.'
             : busy
             ? 'Fetching definition, examples, synonyms…'
             : `Suggestions prefer ${current?.name ?? 'your language'} and ${uiLang === current?.code ? 'this dictionary' : 'your system language'}.`}
@@ -270,7 +271,7 @@ export function Home() {
         )}
 
         {phrase && (
-          <article className="mt-8 rounded-3xl border border-rule bg-paper p-5 shadow-[0_20px_50px_-32px_rgba(28,23,18,0.45)]">
+          <article className="mt-8 rounded-3xl border border-rule bg-paper p-5 shadow-[0_20px_50px_-32px_var(--wk-shadow)]">
             <div className="mb-4 flex flex-wrap items-baseline gap-3">
               <h2 className="lemma text-3xl" dir={isRtl(phrase.language) ? 'rtl' : 'ltr'}>
                 {phrase.text}
@@ -292,7 +293,7 @@ export function Home() {
             )}
             <PhraseAnalysisView analysis={phrase} />
             <label className="mt-5 block">
-              <span className="mb-1 block text-[11px] uppercase tracking-[0.16em] text-muted">
+              <span className="mb-1 block text-xs uppercase tracking-[0.16em] text-muted">
                 Optional mnemonic
               </span>
               <textarea
@@ -315,7 +316,7 @@ export function Home() {
         )}
 
         {lookup && (
-          <article className="mt-8 rounded-3xl border border-rule bg-paper p-5 shadow-[0_20px_50px_-32px_rgba(28,23,18,0.45)]">
+          <article className="mt-8 rounded-3xl border border-rule bg-paper p-5 shadow-[0_20px_50px_-32px_var(--wk-shadow)]">
             <div className="flex flex-wrap items-baseline gap-3">
               <h2 className="lemma text-4xl" dir={isRtl(lookup.language) ? 'rtl' : 'ltr'}>
                 {lookup.displayLemma}
@@ -341,7 +342,7 @@ export function Home() {
             )}
             {lookup.etymology && (
               <blockquote className="mt-4 border-l-2 border-gold pl-4 text-sm leading-relaxed text-muted">
-                <span className="mb-1 block text-[11px] uppercase tracking-[0.18em] text-gold">
+                <span className="mb-1 block text-xs uppercase tracking-[0.18em] text-gold">
                   Etymology
                 </span>
                 {lookup.etymology}
@@ -362,7 +363,7 @@ export function Home() {
                 {lookup.translations.slice(0, 8).map((item) => (
                   <span key={`${item.language}-${item.lemma}`} className="ml-2 text-ink">
                     {item.lemma}
-                    <span className="ml-1 font-mono text-[10px] uppercase text-muted">
+                    <span className="ml-1 font-mono text-xs uppercase text-muted">
                       {item.language}
                     </span>
                   </span>
@@ -371,7 +372,7 @@ export function Home() {
               </p>
             )}
             <label className="mt-5 block">
-              <span className="mb-1 block text-[11px] uppercase tracking-[0.16em] text-muted">
+              <span className="mb-1 block text-xs uppercase tracking-[0.16em] text-muted">
                 Optional mnemonic — not the definition
               </span>
               <textarea
@@ -408,7 +409,9 @@ export function Home() {
           <p className="mt-4 text-sm text-muted">
             {stats?.lexiconCount ?? 0} kept · {stats?.newCount ?? 0} new ·{' '}
             {stats?.languageCount ?? 0} languages
-            {stats?.phraseCount ? ` · ${stats.phraseCount} phrases` : ''}
+            {stats?.phraseCount
+              ? ` · ${stats.phraseCount} ${stats.phraseCount === 1 ? 'phrase' : 'phrases'}`
+              : ''}
           </p>
         </div>
         <div>
@@ -425,7 +428,7 @@ export function Home() {
                     <span className="lemma text-xl" dir={isRtl(word.language) ? 'rtl' : 'ltr'}>
                       {word.displayLemma}
                     </span>
-                    <span className="font-mono text-[10px] uppercase text-muted">
+                    <span className="font-mono text-xs uppercase text-muted">
                       {word.language}
                     </span>
                   </div>

@@ -7,7 +7,8 @@ import {
   segmentPhrase,
 } from '../../shared/phrase.ts'
 import { findWordId, normalizeLemma } from './db.ts'
-import { analyzeGrammar, grammarAnalyzerActive, type ClaudeGrammar } from './grammar-ai.ts'
+import { readSharedAnalysis, takeAiAllowance, writeSharedAnalysis } from './ai-limits.ts'
+import { analyzeGrammar, grammarAnalyzerActive, grammarModel, type ClaudeGrammar } from './grammar-ai.ts'
 import { languageName } from './languages.ts'
 import { fetchFreeDictionary, type FreeEntry } from './lookup.ts'
 
@@ -215,7 +216,12 @@ function withExisting(analysis: PhraseAnalysis): PhraseAnalysis {
  * Breaks a phrase into words with a dictionary lookup for each, then asks
  * Claude for structure, translation, and quiz material when a key is set.
  */
-export async function analyzePhrase(rawText: string, lang: string, explain = 'en'): Promise<PhraseAnalysis> {
+export async function analyzePhrase(
+  rawText: string,
+  lang: string,
+  explain = 'en',
+  options: { visitor?: string } = {},
+): Promise<PhraseAnalysis> {
   const text = normalizePhrase(rawText)
   if (!text) throw new PhraseInputError('Type a phrase to analyze')
   if (text.length > MAX_PHRASE_CHARS) {
@@ -299,6 +305,17 @@ export async function analyzePhrase(rawText: string, lang: string, explain = 'en
   }
 
   if (aiActive) {
+    const sharedKey = ['v1', grammarModel(), lang, explain, text]
+    const shared = await readSharedAnalysis<ClaudeGrammar>(sharedKey)
+    if (shared) {
+      analysis = mergeClaude(analysis, shared)
+      if (!infos.some((info) => info.failed)) remember(analysisCache, cacheKey, analysis, MAX_ANALYSIS_CACHE)
+      return withExisting(analysis)
+    }
+    const allowance = await takeAiAllowance(options.visitor ?? 'local')
+    if (!allowance.ok) {
+      return withExisting({ ...analysis, note: `${allowance.message} Showing the dictionary breakdown.` })
+    }
     try {
       const ai = await analyzeGrammar({
         text,
@@ -315,6 +332,7 @@ export async function analyzePhrase(rawText: string, lang: string, explain = 'en
             gloss,
           })),
       })
+      await writeSharedAnalysis(sharedKey, ai)
       analysis = mergeClaude(analysis, ai)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'unknown error'
