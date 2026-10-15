@@ -14,6 +14,7 @@
   --color-saved: #2f5d50;
   --color-related: #3d5c7a;
   --color-etymology: #6b3f6e;
+  --color-phrase: #5a6b1f;
   --color-chip: #e7dfd1;
 }
 
@@ -52,6 +53,7 @@
     --color-saved: #7dbaa8;
     --color-related: #8eb4d4;
     --color-etymology: #c49bc8;
+    --color-phrase: #b5c46a;
     --color-chip: #2a241e;
   }
 

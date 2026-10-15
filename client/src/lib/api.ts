@@ -1,8 +1,10 @@
 import type {
   GraphPayload,
+  KeepPhraseInput,
   KeepWordInput,
   Language,
   LookupResult,
+  PhraseAnalysis,
   PlayRound,
   SuggestResponse,
   Stats,
@@ -44,6 +46,20 @@ export const api = {
     return request<WordSummary[]>(`/api/words${suffix}`)
   },
   recent: () => request<WordSummary[]>('/api/words/recent'),
+  analyzePhrase: (q: string, lang: string, explain: string) =>
+    request<PhraseAnalysis>(
+      `/api/phrase/analyze?q=${encodeURIComponent(q)}&lang=${encodeURIComponent(lang)}&explain=${encodeURIComponent(explain)}`,
+    ),
+  keepPhrase: (input: KeepPhraseInput) =>
+    request<{ alreadyKept: boolean; word: WordDetail }>('/api/phrases', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  reanalyze: (id: string, explain: string) =>
+    request<WordDetail>(`/api/words/${id}/reanalyze`, {
+      method: 'POST',
+      body: JSON.stringify({ explain }),
+    }),
   word: (id: string) => request<WordDetail>(`/api/words/${id}`),
   keep: (input: KeepWordInput) =>
     request<{ alreadyKept: boolean; word: WordDetail }>('/api/words', {

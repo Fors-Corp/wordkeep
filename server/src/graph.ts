@@ -1,4 +1,4 @@
-import type { GraphPayload, LinkRelation } from '../../shared/types.ts'
+import type { GraphNode, GraphPayload, LinkRelation } from '../../shared/types.ts'
 import { db } from './db.ts'
 import { allActiveWordRows, getWord, normalizeLemma } from './words.ts'
 
@@ -23,7 +23,20 @@ export function wordGraph(centerId?: string): GraphPayload {
       },
     ]
     const edges: GraphPayload['edges'] = []
+    const phraseIds = new Set(
+      (db.prepare(`SELECT id FROM words WHERE kind = 'phrase'`).all() as Array<{ id: string }>).map(
+        (row) => row.id,
+      ),
+    )
     const seenNode = new Set<string>([centerNodeId])
+
+    function neighborKind(relation: LinkRelation, toWordId: string | null): GraphNode['kind'] {
+      if (relation === 'phrase') {
+        if (toWordId && phraseIds.has(toWordId)) return 'phrase'
+        return toWordId ? 'saved' : 'related'
+      }
+      return relation
+    }
     const seenEdge = new Set<string>()
 
     function addNeighbor(
@@ -36,12 +49,7 @@ export function wordGraph(centerId?: string): GraphPayload {
       const id = nodeIdFor(toWordId, lemma, language)
       if (!seenNode.has(id)) {
         seenNode.add(id)
-        const kind: GraphPayload['nodes'][number]['kind'] =
-          relation === 'synonym' || relation === 'antonym' || relation === 'translation' || relation === 'related'
-            ? relation
-            : toWordId
-              ? 'saved'
-              : 'related'
+        const kind = neighborKind(relation, toWordId)
         nodes.push({
           id,
           label: lemma,
@@ -72,7 +80,7 @@ export function wordGraph(centerId?: string): GraphPayload {
     languageName: row.language_name,
     saved: true,
     wordId: row.id,
-    kind: 'saved' as const,
+    kind: row.kind === 'phrase' ? ('phrase' as const) : ('saved' as const),
   }))
   const byKey = new Map(
     words.map((row) => [`${row.language}:${normalizeLemma(row.display_lemma, row.language)}`, row.id]),

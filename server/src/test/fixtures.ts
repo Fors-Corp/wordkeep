@@ -100,3 +100,48 @@ export function installDictionaryMock() {
     globalThis.fetch = original
   }
 }
+
+type MiniEntry = { pos: string; definitions: string[] }
+
+/** Serves a tiny dictionary keyed by word; anything else is a 404. */
+export function installPhraseDictionaryMock(words: Record<string, MiniEntry[]>) {
+  const original = globalThis.fetch
+  const calls: string[] = []
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (url.includes('freedictionaryapi.com/api/v1/entries')) {
+      const word = decodeURIComponent(url.split('/').pop()?.split('?')[0] ?? '')
+      calls.push(word)
+      const entries = words[word]
+      if (!entries) return jsonResponse({}, 404)
+      return jsonResponse({
+        word,
+        entries: entries.map((entry) => ({
+          language: { code: 'en', name: 'English' },
+          partOfSpeech: entry.pos,
+          senses: entry.definitions.map((definition) => ({ definition, tags: [] })),
+        })),
+      })
+    }
+    if (url.includes('freedictionaryapi.com/api/v1/languages')) {
+      return jsonResponse([{ code: 'en', name: 'English', words: 10 }])
+    }
+    return original(input, init)
+  }) as typeof fetch
+  return {
+    calls,
+    restore() {
+      globalThis.fetch = original
+    },
+  }
+}
+
+export const PHRASE_WORDS: Record<string, MiniEntry[]> = {
+  the: [{ pos: 'article', definitions: ['Definite grammatical article.'] }],
+  cat: [{ pos: 'noun', definitions: ['A small domesticated carnivorous mammal.'] }],
+  sat: [{ pos: 'verb', definitions: ['simple past and past participle of sit'] }],
+  sit: [{ pos: 'verb', definitions: ['To be in a position with the upper body upright.'] }],
+  'kick the bucket': [{ pos: 'verb', definitions: ['(idiomatic) To die.'] }],
+  kick: [{ pos: 'verb', definitions: ['To strike with the foot.'] }],
+  bucket: [{ pos: 'noun', definitions: ['A container for carrying liquids.'] }],
+}

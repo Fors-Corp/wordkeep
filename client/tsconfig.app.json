@@ -27,6 +27,6 @@
       "@shared/*": ["../shared/*"]
     }
   },
-  "include": ["src", "../shared/types.ts", "../shared/sm2.ts"],
+  "include": ["src", "../shared/types.ts", "../shared/sm2.ts", "../shared/phrase.ts"],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test"]
 }

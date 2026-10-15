@@ -1,19 +1,21 @@
 {
   "name": "wordkeep",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.1.0",
   "type": "module",
   "license": "MIT",
   "engines": {
     "node": "22.x"
   },
-  "description": "Personal lexicon with active recall, etymology, and cross-language word graphs",
+  "description": "Personal lexicon with active recall, phrase grammar analysis, etymology, and cross-language word graphs",
   "scripts": {
     "dev": "concurrently -n api,web -c blue,green \"npm run dev -w server\" \"npm run dev -w client\"",
     "dev:api": "npm run dev -w server",
     "dev:web": "npm run dev -w client",
     "test": "npm run test -w server && npm run test -w client && npm run test:e2e",
     "test:unit": "npm run test -w server && npm run test -w client",
+    "lint": "npm run lint -w client",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w client",
     "test:e2e": "playwright test",
     "build": "npm run build -w client",
     "build:api": "npx esbuild server/src/vercel-handler.ts --bundle --platform=node --format=esm --outfile='api/[...path].js' --packages=bundle",

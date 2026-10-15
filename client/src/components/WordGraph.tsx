@@ -33,6 +33,7 @@ function nodeFill(node: GraphNode, root: HTMLElement): string {
   if (node.kind === 'translation') return cssVar(root, '--color-gold', '#d4b072')
   if (node.kind === 'related') return cssVar(root, '--color-related', '#8eb4d4')
   if (node.kind === 'etymology') return cssVar(root, '--color-etymology', '#c49bc8')
+  if (node.kind === 'phrase') return cssVar(root, '--color-phrase', '#b5c46a')
   return `hsl(${hashHue(node.language)}, 42%, 46%)`
 }
 
@@ -42,6 +43,7 @@ function relationColor(relation: string, root: HTMLElement): string {
   if (relation === 'translation') return cssVar(root, '--color-gold', '#d4b072')
   if (relation === 'related') return cssVar(root, '--color-related', '#8eb4d4')
   if (relation === 'etymology') return cssVar(root, '--color-etymology', '#c49bc8')
+  if (relation === 'phrase') return cssVar(root, '--color-phrase', '#b5c46a')
   return cssVar(root, '--color-rule', '#3a332c')
 }
 
@@ -417,7 +419,7 @@ export function WordGraph({
   if (!nodes.length) {
     return (
       <p className="rounded-2xl border border-dashed border-rule px-4 py-10 text-center text-muted">
-        Keep a word to see synonyms, antonyms, etymology, and translations.
+        Keep a word or phrase to see synonyms, antonyms, etymology, translations, and the words a phrase is built from.
       </p>
     )
   }
@@ -465,6 +467,10 @@ export function WordGraph({
             style={{ borderTop: '2px dashed var(--color-etymology)' }}
           />
           etymology
+        </span>
+        <span className="flex items-center gap-1">
+          <i className="inline-block h-2 w-4 rounded-sm" style={{ background: 'var(--color-phrase)' }} />
+          phrase
         </span>
       </div>
       {nodes.length > trimmed.nodes.length && (

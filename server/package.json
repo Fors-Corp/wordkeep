@@ -6,12 +6,15 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
-    "test": "tsx --test --test-concurrency=1 ../shared/sm2.test.ts src/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "tsx --test --test-concurrency=1 ../shared/*.test.ts src/*.test.ts",
     "seed:graph": "tsx src/seed-graph.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.134.0",
     "@hono/node-server": "^1.19.5",
-    "hono": "^4.9.9"
+    "hono": "^4.9.9",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",

@@ -2,6 +2,8 @@ export type RecallStatus = 'new' | 'learning' | 'review' | 'mastered'
 
 export type Grade = 'again' | 'hard' | 'good' | 'easy'
 
+export type EntryKind = 'word' | 'phrase'
+
 export type Language = {
   code: string
   name: string
@@ -47,7 +49,7 @@ export type Sense = SenseDraft & {
   sortOrder: number
 }
 
-export type LinkRelation = 'translation' | 'synonym' | 'antonym' | 'related'
+export type LinkRelation = 'translation' | 'synonym' | 'antonym' | 'related' | 'phrase'
 
 export type WordLink = TranslationDraft & {
   id: string
@@ -57,6 +59,7 @@ export type WordLink = TranslationDraft & {
 
 export type WordSummary = {
   id: string
+  kind: EntryKind
   lemma: string
   displayLemma: string
   language: string
@@ -81,6 +84,7 @@ export type WordDetail = WordSummary & {
   forms: WordForm[]
   senses: Sense[]
   links: WordLink[]
+  analysis: PhraseAnalysis | null
 }
 
 export type KeepWordInput = {
@@ -95,6 +99,7 @@ export type Stats = {
   newCount: number
   lexiconCount: number
   languageCount: number
+  phraseCount: number
 }
 
 export type GraphNode = {
@@ -104,7 +109,7 @@ export type GraphNode = {
   languageName: string
   saved: boolean
   wordId: string | null
-  kind: 'center' | 'translation' | 'synonym' | 'antonym' | 'related' | 'etymology' | 'saved'
+  kind: 'center' | 'translation' | 'synonym' | 'antonym' | 'related' | 'etymology' | 'saved' | 'phrase'
 }
 
 export type GraphEdge = {
@@ -143,4 +148,61 @@ export type SuggestResponse = {
   query: string
   detected: Array<{ code: string; name: string }>
   suggestions: Suggestion[]
+}
+
+export type PhraseToken = {
+  index: number
+  start: number
+  text: string
+  lemma: string
+  partOfSpeech: string
+  features: string[]
+  role: string
+  gloss: string
+  explanation: string
+  known: boolean
+  punct: boolean
+}
+
+export type PhraseClause = {
+  text: string
+  type: string
+  explanation: string
+}
+
+export type PhraseIdiom = {
+  text: string
+  meaning: string
+}
+
+export type GrammarQuestion = {
+  question: string
+  answer: string
+}
+
+export type PhraseAnalysis = {
+  text: string
+  language: string
+  languageName: string
+  source: 'dictionary' | 'claude'
+  translation: string
+  summary: string
+  sentenceType: string
+  tense: string
+  mood: string
+  voice: string
+  clauses: PhraseClause[]
+  idioms: PhraseIdiom[]
+  tokens: PhraseToken[]
+  questions: GrammarQuestion[]
+  clozeIndexes: number[]
+  note: string | null
+  existing: { id: string } | null
+}
+
+export type KeepPhraseInput = {
+  text: string
+  lang: string
+  explain?: string
+  note?: string
 }
